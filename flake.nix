@@ -27,6 +27,17 @@
                cmp "$temporary/$name.rs" "$committed"
                touch "$out"
              '';
+             placement-generated = pkgs.runCommand "translator-placement-generated" {
+               generator = ethos-zero.packages.${system}.default;
+               declaration = ./placement.ethos;
+               committed = ./generated/placement.rs;
+             } ''
+               temporary="$(mktemp -d)"
+               "$generator/bin/ethos-zero" "Generate.{ $declaration $temporary }" | grep -q '^Generated'
+               name="$(basename "$declaration" .ethos)"
+               cmp "$temporary/$name.rs" "$committed"
+               touch "$out"
+             '';
            };
            devShells.default = pkgs.mkShell { packages = [ rust.toolchain ]; }; });
 }

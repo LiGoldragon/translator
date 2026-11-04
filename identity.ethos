@@ -3,6 +3,7 @@ Library
 [ UserId.Integer                                      ; types
   GroupId.Integer
   ProcessId.Integer
+  Caller.{ ProcessId UserId }
   PeerIdentity.{ UserId ProcessId }
   PeerId.String
   PeerBinding.{ PeerId PeerIdentity }

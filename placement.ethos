@@ -1,8 +1,8 @@
 Library
 []
 [ MetaflowName.String
-  Directory.String
-  Place.{ MetaflowName Directory }
-  Registry.Vector<Place> ]
+  Runtime.String
+  State.String
+  Place.{ MetaflowName Runtime State } ]
 []
 []

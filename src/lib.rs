@@ -27,39 +27,95 @@ mod text {
 }
 
 #[path = "../generated/placement.rs"]
-pub mod placement;
+mod generated_placement;
+
+pub mod placement {
+    pub use crate::generated_placement::*;
+    use std::path::{Component, Path, PathBuf};
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub enum PlaceResolutionError {
+        EmptyName,
+        UnsafeName(String),
+        MissingEnvironment(&'static str),
+        EmptyEnvironment(&'static str),
+        NonUnicodeEnvironment(&'static str),
+        RelativeEnvironment(&'static str),
+    }
+
+    impl std::fmt::Display for PlaceResolutionError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(formatter, "place resolution failed: {self:?}")
+        }
+    }
+
+    impl std::error::Error for PlaceResolutionError {}
+
+    pub fn validate_metaflow_name(name: &str) -> Result<(), PlaceResolutionError> {
+        if name.is_empty() {
+            return Err(PlaceResolutionError::EmptyName);
+        }
+        let mut components = Path::new(name).components();
+        let safe = matches!(components.next(), Some(Component::Normal(component)) if component == name)
+            && components.next().is_none()
+            && !name.contains('\0');
+        if safe {
+            Ok(())
+        } else {
+            Err(PlaceResolutionError::UnsafeName(name.to_owned()))
+        }
+    }
+
+    fn environment_path(name: &'static str) -> Result<PathBuf, PlaceResolutionError> {
+        let value = std::env::var_os(name)
+            .ok_or(PlaceResolutionError::MissingEnvironment(name))?
+            .into_string()
+            .map_err(|_| PlaceResolutionError::NonUnicodeEnvironment(name))?;
+        if value.is_empty() {
+            return Err(PlaceResolutionError::EmptyEnvironment(name));
+        }
+        let path = PathBuf::from(value);
+        if path.is_absolute() {
+            Ok(path)
+        } else {
+            Err(PlaceResolutionError::RelativeEnvironment(name))
+        }
+    }
+
+    pub fn resolve_place(name: &str) -> Result<Place, PlaceResolutionError> {
+        validate_metaflow_name(name)?;
+        let runtime = environment_path("XDG_RUNTIME_DIR")?
+            .join("metaflow")
+            .join(name);
+        let state = environment_path("HOME")?
+            .join(".local")
+            .join("state")
+            .join("metaflow")
+            .join(name);
+        Ok(Place {
+            metaflow_name: MetaflowName(name.to_owned()),
+            runtime: Runtime(runtime.into_os_string().into_string().expect("validated Unicode root")),
+            state: State(state.into_os_string().into_string().expect("validated Unicode root")),
+        })
+    }
+
+    pub fn runtime_path(place: &Place) -> PathBuf {
+        PathBuf::from(&place.runtime.0)
+    }
+
+    pub fn state_path(place: &Place) -> PathBuf {
+        PathBuf::from(&place.state.0)
+    }
+}
 
 #[path = "../generated/identity.rs"]
 pub mod identity;
 
 pub use identity::{
-    GroupId, PeerBinding, PeerId, PeerIdentity, Principal, ProcessId, UserId,
+    Caller, GroupId, PeerBinding, PeerId, PeerIdentity, Principal, ProcessId, UserId,
 };
+
+pub use placement::{MetaflowName, Place, Runtime, State};
 
 #[cfg(feature = "unix")]
 pub mod unix;
-
-#[cfg(feature = "text")]
-pub mod registry {
-    use super::placement::{Place, Registry};
-    use datom_codec::{Actualizing, Budget, Potential};
-
-    #[derive(Debug, Eq, PartialEq)]
-    pub enum RegistryError { Invalid(String), Missing(String) }
-    pub fn decode(text: &str, budget: &mut Budget) -> Result<Registry, RegistryError> {
-        let mut potential = Potential::<Registry>::from(text);
-        let registry = potential.actualize(budget).map_err(|e| RegistryError::Invalid(format!("{e:?}")))?;
-        validate(&registry)?;
-        Ok(registry)
-    }
-    pub fn validate(registry: &Registry) -> Result<(), RegistryError> {
-        for (i, left) in registry.0.iter().enumerate() {
-            if registry.0.iter().skip(i + 1).any(|right| right.metaflow_name.0 == left.metaflow_name.0) { return Err(RegistryError::Invalid(format!("duplicate metaflow name: {}", left.metaflow_name.0))); }
-            if registry.0.iter().skip(i + 1).any(|right| right.directory.0 == left.directory.0) { return Err(RegistryError::Invalid(format!("duplicate directory: {}", left.directory.0))); }
-        }
-        Ok(())
-    }
-    pub fn select<'a>(registry: &'a Registry, name: &str) -> Result<&'a Place, RegistryError> {
-        registry.0.iter().find(|place| place.metaflow_name.0 == name).ok_or_else(|| RegistryError::Missing(name.to_owned()))
-    }
-}
