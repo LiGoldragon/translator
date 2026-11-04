@@ -1,6 +1,6 @@
 //! Policy-free Unix transport mechanics shared by Nexus translators.
 
-use crate::{GroupId, PeerIdentity, ProcessId, UserId};
+use crate::{Caller, GroupId, PeerIdentity, ProcessId, UserId};
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, OwnedFd};
 use std::time::{Duration, Instant};
@@ -181,6 +181,11 @@ impl LivePeer {
     pub fn matches(&self, credentials: &PeerCredentials) -> bool {
         self.identity.user_id == credentials.user_id
             && self.identity.process_id == credentials.process_id
+            && self.is_live()
+    }
+    pub fn matches_caller(&self, caller: &Caller) -> bool {
+        self.identity.user_id == caller.user_id
+            && self.identity.process_id == caller.process_id
             && self.is_live()
     }
 }
