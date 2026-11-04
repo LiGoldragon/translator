@@ -365,6 +365,7 @@ version = "0.1.0"
 dependencies = [
  "datom-codec 0.32.3",
  "protos",
+ "rkyv",
  "signal",
 ]
 
