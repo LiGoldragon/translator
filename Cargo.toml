@@ -9,9 +9,13 @@ publish = false
 default = []
 datom = ["dep:datom-codec", "dep:protos"]
 text = ["datom"]
+unix = ["dep:libc", "dep:nix", "dep:rustix"]
 
 [dependencies]
 signal = { git = "https://github.com/LiGoldragon/signal", rev = "0cad1d1aeddec7da2971dc88e964320a6db48c20", default-features = false }
 datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "e26d90ff185d54bc0007b19a8d9bc390c6bfeb12", optional = true }
 protos = { git = "https://github.com/LiGoldragon/protos", rev = "15b41da8f2579e73ead59bc0c2b97529b8ac32d3", optional = true }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+libc = { version = "0.2", optional = true }
+nix = { version = "0.30", features = ["poll", "socket"], optional = true }
+rustix = { version = "1", features = ["process"], optional = true }

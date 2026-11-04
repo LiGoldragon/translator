@@ -36,6 +36,9 @@ pub use identity::{
     GroupId, PeerBinding, PeerId, PeerIdentity, Principal, ProcessId, UserId,
 };
 
+#[cfg(feature = "unix")]
+pub mod unix;
+
 #[cfg(feature = "text")]
 pub mod registry {
     use super::placement::{Place, Registry};

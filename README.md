@@ -7,3 +7,10 @@ Datom dependency.
 
 All external endpoints and CLI vocabulary belong to component translators and
 are supplied as typed configuration.
+# Translator
+
+The optional `unix` feature supplies policy-free Unix transport mechanics:
+absolute progress deadlines, idle-before-first-byte framing, complete-submit
+witnesses, kernel peer credentials and pidfd liveness, validated admission,
+and classified accept retry. Component socket names, lanes, query routing and
+domain configuration remain in each Nexus.
