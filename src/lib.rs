@@ -29,6 +29,13 @@ mod text {
 #[path = "../generated/placement.rs"]
 pub mod placement;
 
+#[path = "../generated/identity.rs"]
+pub mod identity;
+
+pub use identity::{
+    GroupId, PeerBinding, PeerId, PeerIdentity, Principal, ProcessId, UserId,
+};
+
 #[cfg(feature = "text")]
 pub mod registry {
     use super::placement::{Place, Registry};

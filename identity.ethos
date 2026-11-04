@@ -1,0 +1,12 @@
+Library
+[]                                                    ; imports
+[ UserId.Integer                                      ; types
+  GroupId.Integer
+  ProcessId.Integer
+  PeerIdentity.{ UserId ProcessId }
+  PeerId.String
+  PeerBinding.{ PeerId PeerIdentity }
+  Principal.[ Login.UserId
+              Peer.PeerId ] ]
+[]                                                    ; traits
+[]                                                    ; associations
