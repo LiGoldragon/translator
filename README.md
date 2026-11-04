@@ -1,5 +1,9 @@
 # translator
 
-Fresh version 1 reusable translator library. It will own typed text decoding,
-encoding, and transport framing; component translators own their external CLI
-vocabulary and execution.
+Fresh version 1 reusable translator library. Binary Signal framing and typed
+rkyv transport are always available. Enable the `text` feature for Datom text
+decoding and encoding; Nexus crates can depend on the binary API without a
+Datom dependency.
+
+All external endpoints and CLI vocabulary belong to component translators and
+are supplied as typed configuration.
