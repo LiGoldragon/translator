@@ -82,20 +82,59 @@ pub mod placement {
         }
     }
 
+    fn runtime(name: &str) -> Result<Runtime, PlaceResolutionError> {
+        let path = environment_path("XDG_RUNTIME_DIR")?
+            .join("metaflow")
+            .join(name);
+        Ok(Runtime(
+            path.into_os_string()
+                .into_string()
+                .expect("validated Unicode root"),
+        ))
+    }
+
+    fn home_state_root() -> Result<PathBuf, PlaceResolutionError> {
+        Ok(environment_path("HOME")?.join(".local").join("state"))
+    }
+
+    fn state_root() -> Result<PathBuf, PlaceResolutionError> {
+        let Some(value) = std::env::var_os("XDG_STATE_HOME") else {
+            return home_state_root();
+        };
+        if value.is_empty() {
+            return home_state_root();
+        }
+        let value = value
+            .into_string()
+            .map_err(|_| PlaceResolutionError::NonUnicodeEnvironment("XDG_STATE_HOME"))?;
+        let path = PathBuf::from(value);
+        if path.is_absolute() {
+            Ok(path)
+        } else {
+            home_state_root()
+        }
+    }
+
+    fn state(name: &str) -> Result<State, PlaceResolutionError> {
+        let path = state_root()?.join("metaflow").join(name);
+        Ok(State(
+            path.into_os_string()
+                .into_string()
+                .expect("validated Unicode root"),
+        ))
+    }
+
+    pub fn resolve_runtime(name: &str) -> Result<Runtime, PlaceResolutionError> {
+        validate_metaflow_name(name)?;
+        runtime(name)
+    }
+
     pub fn resolve_place(name: &str) -> Result<Place, PlaceResolutionError> {
         validate_metaflow_name(name)?;
-        let runtime = environment_path("XDG_RUNTIME_DIR")?
-            .join("metaflow")
-            .join(name);
-        let state = environment_path("HOME")?
-            .join(".local")
-            .join("state")
-            .join("metaflow")
-            .join(name);
         Ok(Place {
             metaflow_name: MetaflowName(name.to_owned()),
-            runtime: Runtime(runtime.into_os_string().into_string().expect("validated Unicode root")),
-            state: State(state.into_os_string().into_string().expect("validated Unicode root")),
+            runtime: runtime(name)?,
+            state: state(name)?,
         })
     }
 
