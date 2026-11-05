@@ -83,6 +83,18 @@ pub fn read_frame(input: &mut impl Read, limit: usize) -> Result<Frame, Error> {
     Ok(Frame { lane: body[0], kind: body[1], payload: body.split_off(HEADER_BYTES) })
 }
 
+fn read_idle_byte(input: &mut impl Read, byte: &mut u8) -> std::io::Result<bool> {
+    loop {
+        match input.read(std::slice::from_mut(byte)) {
+            Ok(0) => return Ok(false),
+            Ok(1) => return Ok(true),
+            Ok(_) => unreachable!("a one-byte buffer read at most one byte"),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 pub fn read_frame_after_idle(
     mut stream: std::os::unix::net::UnixStream,
     progress_timeout: Duration,
@@ -91,11 +103,8 @@ pub fn read_frame_after_idle(
     validate_limit(limit)?;
     stream.set_read_timeout(None)?;
     let mut prefix = [0_u8; 4];
-    match stream.read(&mut prefix[..1]) {
-        Ok(0) => return Ok(None),
-        Ok(1) => {}
-        Ok(_) => return Err(Error::InvalidLength),
-        Err(error) => return Err(Error::Io(error)),
+    if !read_idle_byte(&mut stream, &mut prefix[0])? {
+        return Ok(None);
     }
     let mut progressing = DeadlineStream::new(stream, progress_timeout)?;
     progressing.read_exact(&mut prefix[1..])?;
@@ -188,6 +197,44 @@ impl LivePeer {
         self.identity.user_id == caller.user_id
             && self.identity.process_id == caller.process_id
             && self.is_live()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_idle_byte;
+    use std::io::Read;
+
+    struct InterruptedThenByte(bool);
+    impl Read for InterruptedThenByte {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if !self.0 {
+                self.0 = true;
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            buffer[0] = 7;
+            Ok(1)
+        }
+    }
+
+    #[test]
+    fn idle_byte_read_retries_interruption_and_keeps_eof_and_errors() {
+        let mut byte = 0;
+        assert!(read_idle_byte(&mut InterruptedThenByte(false), &mut byte).unwrap());
+        assert_eq!(byte, 7);
+
+        assert!(!read_idle_byte(&mut &b""[..], &mut byte).unwrap());
+
+        struct Fails;
+        impl Read for Fails {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+        }
+        assert_eq!(
+            read_idle_byte(&mut Fails, &mut byte).unwrap_err().kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
     }
 }
 
