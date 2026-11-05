@@ -23,11 +23,14 @@ fn idle_is_unbounded_and_progress_is_bounded() {
     peer.join().unwrap();
 
     let (reader, mut writer) = std::os::unix::net::UnixStream::pair().unwrap();
+    let (stalled, released) = std::sync::mpsc::channel::<()>();
     let peer = std::thread::spawn(move || {
         writer.write_all(&[0]).unwrap();
-        std::thread::sleep(Duration::from_millis(60));
+        released.recv().unwrap();
+        drop(writer);
     });
     assert!(matches!(read_frame_after_idle(reader, Duration::from_millis(10), 64), Err(Error::Io(_))));
+    stalled.send(()).unwrap();
     peer.join().unwrap();
 }
 
