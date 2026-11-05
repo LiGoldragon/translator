@@ -138,6 +138,7 @@ pub fn write_frame_witness(
         match output.write(&bytes[written..]) {
             Ok(0) => return Err(IncompleteSubmission { written, error: Error::Io(std::io::Error::new(std::io::ErrorKind::WriteZero, "request frame write returned zero")) }),
             Ok(count) => written += count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(IncompleteSubmission { written, error: Error::Io(error) }),
         }
     }

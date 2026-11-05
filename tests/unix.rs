@@ -49,6 +49,32 @@ fn incomplete_submission_reports_written_bytes() {
 }
 
 #[test]
+fn witnessed_submission_retries_an_interrupted_write() {
+    struct InterruptedOnce {
+        interrupted: bool,
+        bytes: Vec<u8>,
+    }
+    impl Write for InterruptedOnce {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if !self.interrupted {
+                self.interrupted = true;
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+    }
+
+    let frame = Frame { lane: 3, kind: 0, payload: vec![1] };
+    let mut expected = Vec::new();
+    write_frame(&mut expected, &frame, 64).unwrap();
+    let mut output = InterruptedOnce { interrupted: false, bytes: Vec::new() };
+    write_frame_witness(&mut output, &frame, 64).unwrap();
+    assert_eq!(output.bytes, expected);
+}
+
+#[test]
 fn accept_retries_only_recoverable_failures() {
     let mut attempts = 0;
     let mut waits = Vec::new();
