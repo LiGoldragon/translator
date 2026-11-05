@@ -240,9 +240,21 @@ mod tests {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Admission {
-    pub deadline: Duration,
-    pub frame_capacity: usize,
-    pub retry_delay: Duration,
+    deadline: Duration,
+    frame_capacity: usize,
+    retry_delay: Duration,
+}
+
+pub trait AdmissionAccess {
+    fn deadline(&self) -> Duration;
+    fn frame_capacity(&self) -> usize;
+    fn retry_delay(&self) -> Duration;
+}
+
+impl AdmissionAccess for Admission {
+    fn deadline(&self) -> Duration { self.deadline }
+    fn frame_capacity(&self) -> usize { self.frame_capacity }
+    fn retry_delay(&self) -> Duration { self.retry_delay }
 }
 
 impl Admission {

@@ -89,6 +89,18 @@ fn accept_retries_only_recoverable_failures() {
 }
 
 #[test]
+fn admission_is_constructed_once_and_read_through_its_access_kind() {
+    let admission = Admission::new(Duration::from_millis(7), 64, Duration::from_millis(3)).unwrap();
+    assert_eq!(admission.deadline(), Duration::from_millis(7));
+    assert_eq!(admission.frame_capacity(), 64);
+    assert_eq!(admission.retry_delay(), Duration::from_millis(3));
+
+    assert!(Admission::new(Duration::ZERO, 64, Duration::from_millis(3)).is_err());
+    assert!(Admission::new(Duration::from_millis(7), 1, Duration::from_millis(3)).is_err());
+    assert!(Admission::new(Duration::from_millis(7), 64, Duration::ZERO).is_err());
+}
+
+#[test]
 fn current_process_peer_is_live_and_matches_kernel_credentials() {
     let (left, right) = std::os::unix::net::UnixStream::pair().unwrap();
     let credentials = peer_credentials(&left).unwrap();
