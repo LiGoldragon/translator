@@ -1,8 +1,8 @@
 Library
 []
-[ MetaflowName.String
+[ PlaceName.String
   Runtime.String
   State.String
-  Place.{ MetaflowName Runtime State } ]
+  Place.{ PlaceName Runtime State } ]
 []
 []

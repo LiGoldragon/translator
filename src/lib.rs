@@ -2,7 +2,7 @@
 //! textual Datom conversion is enabled by the `text` feature.
 
 pub use signal::{
-    ByteViewable, FrameBody, FrameCapacity, FrameError, FrameReading, FrameWriting, Framable,
+    ByteViewable, Framable, FrameBody, FrameCapacity, FrameError, FrameReading, FrameWriting,
     Restorable, Signal, Signalizable,
 };
 
@@ -31,6 +31,7 @@ mod generated_placement;
 
 pub mod placement {
     pub use crate::generated_placement::*;
+    use std::io;
     use std::path::{Component, Path, PathBuf};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,7 +52,42 @@ pub mod placement {
 
     impl std::error::Error for PlaceResolutionError {}
 
-    pub fn validate_metaflow_name(name: &str) -> Result<(), PlaceResolutionError> {
+    #[derive(Debug)]
+    pub enum PlacePreparationError {
+        StateConflict { legacy: PathBuf, current: PathBuf },
+        Io { path: PathBuf, source: io::Error },
+    }
+
+    impl std::fmt::Display for PlacePreparationError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::StateConflict { legacy, current } => write!(
+                    formatter,
+                    "legacy state {} and current state {} both exist",
+                    legacy.display(),
+                    current.display()
+                ),
+                Self::Io { path, source } => {
+                    write!(
+                        formatter,
+                        "place preparation at {} failed: {source}",
+                        path.display()
+                    )
+                }
+            }
+        }
+    }
+
+    impl std::error::Error for PlacePreparationError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match self {
+                Self::StateConflict { .. } => None,
+                Self::Io { source, .. } => Some(source),
+            }
+        }
+    }
+
+    pub fn validate_place_name(name: &str) -> Result<(), PlaceResolutionError> {
         if name.is_empty() {
             return Err(PlaceResolutionError::EmptyName);
         }
@@ -84,7 +120,7 @@ pub mod placement {
 
     fn runtime(name: &str) -> Result<Runtime, PlaceResolutionError> {
         let path = environment_path("XDG_RUNTIME_DIR")?
-            .join("metaflow")
+            .join("nexus")
             .join(name);
         Ok(Runtime(
             path.into_os_string()
@@ -116,7 +152,7 @@ pub mod placement {
     }
 
     fn state(name: &str) -> Result<State, PlaceResolutionError> {
-        let path = state_root()?.join("metaflow").join(name);
+        let path = state_root()?.join("nexus").join(name);
         Ok(State(
             path.into_os_string()
                 .into_string()
@@ -125,14 +161,14 @@ pub mod placement {
     }
 
     pub fn resolve_runtime(name: &str) -> Result<Runtime, PlaceResolutionError> {
-        validate_metaflow_name(name)?;
+        validate_place_name(name)?;
         runtime(name)
     }
 
     pub fn resolve_place(name: &str) -> Result<Place, PlaceResolutionError> {
-        validate_metaflow_name(name)?;
+        validate_place_name(name)?;
         Ok(Place {
-            metaflow_name: MetaflowName(name.to_owned()),
+            place_name: PlaceName(name.to_owned()),
             runtime: runtime(name)?,
             state: state(name)?,
         })
@@ -145,6 +181,63 @@ pub mod placement {
     pub fn state_path(place: &Place) -> PathBuf {
         PathBuf::from(&place.state.0)
     }
+
+    fn legacy_state_path(place: &Place) -> Option<PathBuf> {
+        let current = state_path(place);
+        let nexus = current.parent()?;
+        if current.file_name()? != place.place_name.0.as_str() || nexus.file_name()? != "nexus" {
+            return None;
+        }
+        Some(nexus.parent()?.join("metaflow").join(&place.place_name.0))
+    }
+
+    fn create_directory(path: &Path) -> Result<(), PlacePreparationError> {
+        std::fs::create_dir_all(path).map_err(|source| PlacePreparationError::Io {
+            path: path.to_owned(),
+            source,
+        })
+    }
+
+    fn path_exists(path: &Path) -> Result<bool, PlacePreparationError> {
+        path.try_exists()
+            .map_err(|source| PlacePreparationError::Io {
+                path: path.to_owned(),
+                source,
+            })
+    }
+
+    /// Start-only filesystem preparation for one Nexus place.
+    pub trait Preparable {
+        /// Move legacy state when it is the sole store, then create the new
+        /// runtime and state directories. Resolution itself remains pure.
+        fn prepare_for_start(&self) -> Result<(), PlacePreparationError>;
+    }
+
+    impl Preparable for Place {
+        fn prepare_for_start(&self) -> Result<(), PlacePreparationError> {
+            let current = state_path(self);
+            if let Some(legacy) = legacy_state_path(self) {
+                let legacy_exists = path_exists(&legacy)?;
+                let current_exists = path_exists(&current)?;
+                if legacy_exists && current_exists {
+                    return Err(PlacePreparationError::StateConflict { legacy, current });
+                }
+                if legacy_exists {
+                    if let Some(parent) = current.parent() {
+                        create_directory(parent)?;
+                    }
+                    std::fs::rename(&legacy, &current).map_err(|source| {
+                        PlacePreparationError::Io {
+                            path: legacy,
+                            source,
+                        }
+                    })?;
+                }
+            }
+            create_directory(&runtime_path(self))?;
+            create_directory(&current)
+        }
+    }
 }
 
 #[path = "../generated/identity.rs"]
@@ -154,7 +247,7 @@ pub use identity::{
     Caller, GroupId, PeerBinding, PeerId, PeerIdentity, Principal, ProcessId, UserId,
 };
 
-pub use placement::{MetaflowName, Place, Runtime, State};
+pub use placement::{Place, PlaceName, PlacePreparationError, Preparable, Runtime, State};
 
 #[cfg(feature = "unix")]
 pub mod unix;
