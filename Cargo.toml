@@ -1,6 +1,7 @@
 [package]
 name = "translator"
-version = "0.3.0"
+version = "0.3.1"
+rust-version = "1.89"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
@@ -9,7 +10,7 @@ publish = false
 default = []
 datom = ["dep:datom-codec", "dep:protos"]
 text = ["datom"]
-unix = ["dep:libc", "dep:nix", "dep:rustix"]
+unix = ["dep:libc", "dep:nix"]
 
 [dependencies]
 signal = { git = "https://github.com/LiGoldragon/signal", rev = "7afb68b", default-features = false }
@@ -18,4 +19,6 @@ protos = { git = "https://github.com/LiGoldragon/protos", rev = "3c7ade3", optio
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 libc = { version = "0.2", optional = true }
 nix = { version = "0.30", features = ["poll", "socket"], optional = true }
-rustix = { version = "1", features = ["process"], optional = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["process", "fs"] }

@@ -182,6 +182,7 @@ pub mod placement {
         PathBuf::from(&place.state.0)
     }
 
+    #[cfg(not(unix))]
     fn legacy_state_path(place: &Place) -> Option<PathBuf> {
         let current = state_path(place);
         let nexus = current.parent()?;
@@ -198,6 +199,7 @@ pub mod placement {
         })
     }
 
+    #[cfg(not(unix))]
     fn path_exists(path: &Path) -> Result<bool, PlacePreparationError> {
         path.try_exists()
             .map_err(|source| PlacePreparationError::Io {
@@ -206,7 +208,36 @@ pub mod placement {
             })
     }
 
+    /// The root of a standard place path `<root>/nexus/<name>`: an absolute path
+    /// of normal components whose last component is the place name and whose
+    /// parent is named `nexus`.
+    #[cfg(unix)]
+    fn standard_root(path: &Path, name: &str) -> Option<PathBuf> {
+        if !path.is_absolute()
+            || !path
+                .components()
+                .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
+        {
+            return None;
+        }
+        let nexus = path.parent()?;
+        if path.file_name()? != name || nexus.file_name()? != "nexus" {
+            return None;
+        }
+        Some(nexus.parent()?.to_owned())
+    }
+
     /// Start-only filesystem preparation for one Nexus place.
+    ///
+    /// A standard place (state at `<root>/nexus/<name>`) is migration capable:
+    /// on Unix its preparation takes an exclusive per-destination lock and works
+    /// descriptor-relative from the verified root, so cooperating preparers of
+    /// one destination serialize. An explicit place (any other state path) only
+    /// creates directories, never looks for or moves legacy state, and refuses
+    /// an actual identity conflict with the standard destination of the same
+    /// name. Neither plan owns the place for its lifetime or guards against
+    /// other writers, and an alias the process cannot observe is outside the
+    /// guarantee.
     pub trait Preparable {
         /// Move legacy state when it is the sole store, then create the new
         /// runtime and state directories. Resolution itself remains pure.
@@ -214,31 +245,103 @@ pub mod placement {
     }
 
     impl Preparable for Place {
+        #[cfg(unix)]
         fn prepare_for_start(&self) -> Result<(), PlacePreparationError> {
             let current = state_path(self);
-            if let Some(legacy) = legacy_state_path(self) {
-                let legacy_exists = path_exists(&legacy)?;
-                let current_exists = path_exists(&current)?;
-                if legacy_exists && current_exists {
-                    return Err(PlacePreparationError::StateConflict { legacy, current });
-                }
-                if legacy_exists {
-                    if let Some(parent) = current.parent() {
-                        create_directory(parent)?;
-                    }
-                    std::fs::rename(&legacy, &current).map_err(|source| {
-                        PlacePreparationError::Io {
-                            path: legacy,
-                            source,
-                        }
-                    })?;
-                }
+            match standard_root(&current, &self.place_name.0) {
+                Some(root) => prepare_standard(self, &root),
+                None => prepare_explicit(self, &current),
             }
-            create_directory(&runtime_path(self))?;
-            create_directory(&current)
+        }
+
+        /// Targets without the anchored primitives keep the previous
+        /// preparation, dispatch and routine unchanged.
+        #[cfg(not(unix))]
+        fn prepare_for_start(&self) -> Result<(), PlacePreparationError> {
+            prepare_previous(self)
         }
     }
+
+    #[cfg(unix)]
+    fn prepare_standard(place: &Place, root: &Path) -> Result<(), PlacePreparationError> {
+        let runtime = runtime_path(place);
+        let runtime_root = standard_root(&runtime, &place.place_name.0);
+        crate::anchored::prepare_standard(
+            root,
+            runtime_root.as_deref(),
+            &place.place_name.0,
+            &runtime,
+        )
+    }
+
+    #[cfg(not(unix))]
+    fn prepare_previous(place: &Place) -> Result<(), PlacePreparationError> {
+        let current = state_path(place);
+        if let Some(legacy) = legacy_state_path(place) {
+            let legacy_exists = path_exists(&legacy)?;
+            let current_exists = path_exists(&current)?;
+            if legacy_exists && current_exists {
+                return Err(PlacePreparationError::StateConflict { legacy, current });
+            }
+            if legacy_exists {
+                if let Some(parent) = current.parent() {
+                    create_directory(parent)?;
+                }
+                std::fs::rename(&legacy, &current).map_err(|source| PlacePreparationError::Io {
+                    path: legacy,
+                    source,
+                })?;
+            }
+        }
+        create_directory(&runtime_path(place))?;
+        create_directory(&current)
+    }
+
+    #[cfg(unix)]
+    fn prepare_explicit(place: &Place, current: &Path) -> Result<(), PlacePreparationError> {
+        refuse_standard_identity(&place.place_name.0, current)?;
+        create_directory(&runtime_path(place))?;
+        create_directory(current)
+    }
+
+    /// Refuse when the explicit state path, or the first existing directory on
+    /// the way to it, is the very directory the standard plan would use for the
+    /// same place name or the namespace directory that holds it.
+    #[cfg(unix)]
+    fn refuse_standard_identity(name: &str, current: &Path) -> Result<(), PlacePreparationError> {
+        let Ok(root) = state_root() else {
+            return Ok(());
+        };
+        let protected: Vec<(u64, u64)> = [
+            root.join("nexus"),
+            root.join("nexus").join(name),
+            root.join("metaflow"),
+            root.join("metaflow").join(name),
+        ]
+        .iter()
+        .filter_map(|path| crate::anchored::identity(path))
+        .collect();
+        for ancestor in current.ancestors() {
+            let Some(found) = crate::anchored::identity(ancestor) else {
+                continue;
+            };
+            if protected.contains(&found) {
+                return Err(PlacePreparationError::Io {
+                    path: current.to_owned(),
+                    source: io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "explicit state path reaches the standard state of this place",
+                    ),
+                });
+            }
+            break;
+        }
+        Ok(())
+    }
 }
+
+#[cfg(unix)]
+mod anchored;
 
 #[path = "../generated/identity.rs"]
 pub mod identity;
