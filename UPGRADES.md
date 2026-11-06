@@ -25,6 +25,8 @@ The exclusion is not ownership of the place for its lifetime, it does not stop o
 writers, and an alias the process cannot observe is outside it. No text, archive or
 wire layout changes.
 
+The placement code and its tests depend on the Unix target, not on a Cargo feature, and the flake runs `scoped` and `preparation` under the default feature set as well as the whole suite under all features.
+
 How to deploy: repin translator 0.3.2 in the consumer; no new directory appears.
 
 ## 0.3.1 — shared exclusion for place preparation

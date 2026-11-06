@@ -16,6 +16,7 @@
       in { packages.default = rust.craneLib.buildPackage { src = source; inherit cargoArtifacts; };
            checks = {
              test = rust.craneLib.cargoTest { src = source; inherit cargoArtifacts; cargoTestExtraArgs = "--all-features"; };
+             test-default-placement = rust.craneLib.cargoTest { src = source; inherit cargoArtifacts; cargoTestExtraArgs = "--test scoped --test preparation"; };
              identity-generated = pkgs.runCommand "translator-identity-generated" {
                generator = ethos-zero.packages.${system}.default;
                declaration = ./identity.ethos;
