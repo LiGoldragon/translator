@@ -1,5 +1,32 @@
 # Upgrades
 
+## 0.3.2 — one operation on a prepared place
+
+`ScopedPreparation::with_prepared_place` runs a caller's operation on a prepared place.
+It is a separate trait, so `Preparable` and its implementors are unchanged, and
+`prepare_for_start` is now exactly `with_prepared_place` over an empty operation.
+
+- **Standard place**: the operation runs while the same exclusion `prepare_for_start`
+  takes, the lock `nexus-place-locks/<name>` of the same two-plan preparation, is still
+  held. The guard is released when the call returns, on success, on an operation error
+  and on unwind, before the caller starts anything of its own lifetime. Cooperating
+  callers that do their own filename work inside the operation therefore serialize with
+  each other and with the legacy move.
+- **Explicit place**: the operation runs after directories are created, with no lock.
+  Concurrent operations on one explicit destination are not serialized, and
+  `PreparedPlace::mode` says so: `MigrationExclusive` for a standard place, `CreateOnly`
+  for an explicit one.
+- `PreparedPlace` lends the runtime and state paths and the mode for the call, is built only
+  by this module and owns neither the place nor the lock. The operation returns an owned
+  result; a preparation failure is `Held::Preparation`, an operation failure is
+  `Held::Operation`, and a failed preparation never runs the operation.
+
+The exclusion is not ownership of the place for its lifetime, it does not stop other
+writers, and an alias the process cannot observe is outside it. No text, archive or
+wire layout changes.
+
+How to deploy: repin translator 0.3.2 in the consumer; no new directory appears.
+
 ## 0.3.1 — shared exclusion for place preparation
 
 `Preparable::prepare_for_start` keeps its signature and its public error type. It now runs one of two plans, told apart by the place itself.

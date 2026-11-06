@@ -239,16 +239,32 @@ fn move_legacy(
 }
 
 /// Prepare the state and runtime of a standard Place under its exclusion.
-pub(crate) fn prepare_standard(
+pub(crate) fn prepare_standard<T, E>(
     state_root: &Path,
     runtime_root: Option<&Path>,
     name: &str,
     runtime_path: &Path,
-) -> Outcome<()> {
+    operation: impl FnOnce() -> Result<T, E>,
+) -> Result<T, crate::placement::Held<E>> {
+    let exclusion = take_and_prepare(state_root, runtime_root, name, runtime_path)
+        .map_err(crate::placement::Held::Preparation)?;
+    let result = operation().map_err(crate::placement::Held::Operation);
+    drop(exclusion);
+    result
+}
+
+/// Prepare the state and runtime of a standard Place and hand back the held
+/// exclusion; the caller drops it, on success, on error and on unwind alike.
+fn take_and_prepare(
+    state_root: &Path,
+    runtime_root: Option<&Path>,
+    name: &str,
+    runtime_path: &Path,
+) -> Outcome<Exclusion> {
     let root = acquire_root(state_root)?;
     let nexus_path = state_root.join(NEXUS);
     let nexus = ensure_directory(&root, &nexus_path, NEXUS)?;
-    let _exclusion = Exclusion::take(&root, state_root, name)?;
+    let exclusion = Exclusion::take(&root, state_root, name)?;
 
     let current_path = nexus_path.join(name);
     let legacy_dir_path = state_root.join(LEGACY);
@@ -294,7 +310,7 @@ pub(crate) fn prepare_standard(
             })?;
         }
     }
-    Ok(())
+    Ok(exclusion)
 }
 
 /// The identity of an existing directory, for refusing an actual conflict

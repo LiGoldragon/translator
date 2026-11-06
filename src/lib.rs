@@ -245,33 +245,124 @@ pub mod placement {
     }
 
     impl Preparable for Place {
-        #[cfg(unix)]
         fn prepare_for_start(&self) -> Result<(), PlacePreparationError> {
+            match self.with_prepared_place(|_| Ok::<(), std::convert::Infallible>(())) {
+                Ok(()) => Ok(()),
+                Err(Held::Preparation(error)) => Err(error),
+                Err(Held::Operation(never)) => match never {},
+            }
+        }
+    }
+
+    /// How a preparation protects the destination while an operation runs.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum PreparationMode {
+        /// A standard place: the per-destination exclusion is held for the whole
+        /// operation, so cooperating preparers of one destination serialize.
+        MigrationExclusive,
+        /// An explicit place: directories are created and nothing is locked, so
+        /// concurrent operations on one explicit destination are not serialized.
+        CreateOnly,
+    }
+
+    /// The prepared directories of a place, lent to one operation. Only this
+    /// module builds it, and it carries no ownership of the place or its lock.
+    #[derive(Debug)]
+    pub struct PreparedPlace<'a> {
+        runtime: &'a Path,
+        state: &'a Path,
+        mode: PreparationMode,
+    }
+
+    impl PreparedPlace<'_> {
+        pub fn runtime(&self) -> &Path {
+            self.runtime
+        }
+
+        pub fn state(&self) -> &Path {
+            self.state
+        }
+
+        pub fn mode(&self) -> PreparationMode {
+            self.mode
+        }
+    }
+
+    /// Why a scoped preparation did not yield its result.
+    #[derive(Debug)]
+    pub enum Held<E> {
+        Preparation(PlacePreparationError),
+        Operation(E),
+    }
+
+    /// Preparation that runs one operation on the prepared place.
+    ///
+    /// For a standard place the operation runs while the same exclusion that
+    /// `prepare_for_start` takes is still held, and the exclusion is released
+    /// when the call returns, on success, on error and on unwind, before the
+    /// caller starts anything of its own lifetime. For an explicit place the
+    /// operation runs unlocked. The result is owned; the place is lent.
+    pub trait ScopedPreparation {
+        fn with_prepared_place<T, E>(
+            &self,
+            operation: impl FnOnce(&PreparedPlace<'_>) -> Result<T, E>,
+        ) -> Result<T, Held<E>>;
+    }
+
+    impl ScopedPreparation for Place {
+        #[cfg(unix)]
+        fn with_prepared_place<T, E>(
+            &self,
+            operation: impl FnOnce(&PreparedPlace<'_>) -> Result<T, E>,
+        ) -> Result<T, Held<E>> {
             let current = state_path(self);
+            let runtime = runtime_path(self);
             match standard_root(&current, &self.place_name.0) {
-                Some(root) => prepare_standard(self, &root),
-                None => prepare_explicit(self, &current),
+                Some(root) => {
+                    let runtime_root = standard_root(&runtime, &self.place_name.0);
+                    let prepared = PreparedPlace {
+                        runtime: &runtime,
+                        state: &current,
+                        mode: PreparationMode::MigrationExclusive,
+                    };
+                    crate::anchored::prepare_standard(
+                        &root,
+                        runtime_root.as_deref(),
+                        &self.place_name.0,
+                        &runtime,
+                        || operation(&prepared),
+                    )
+                }
+                None => {
+                    prepare_explicit(self, &current).map_err(Held::Preparation)?;
+                    let prepared = PreparedPlace {
+                        runtime: &runtime,
+                        state: &current,
+                        mode: PreparationMode::CreateOnly,
+                    };
+                    operation(&prepared).map_err(Held::Operation)
+                }
             }
         }
 
         /// Targets without the anchored primitives keep the previous
-        /// preparation, dispatch and routine unchanged.
+        /// preparation, dispatch and routine unchanged, and run the operation
+        /// after it without any exclusion.
         #[cfg(not(unix))]
-        fn prepare_for_start(&self) -> Result<(), PlacePreparationError> {
-            prepare_previous(self)
+        fn with_prepared_place<T, E>(
+            &self,
+            operation: impl FnOnce(&PreparedPlace<'_>) -> Result<T, E>,
+        ) -> Result<T, Held<E>> {
+            prepare_previous(self).map_err(Held::Preparation)?;
+            let current = state_path(self);
+            let runtime = runtime_path(self);
+            let prepared = PreparedPlace {
+                runtime: &runtime,
+                state: &current,
+                mode: PreparationMode::CreateOnly,
+            };
+            operation(&prepared).map_err(Held::Operation)
         }
-    }
-
-    #[cfg(unix)]
-    fn prepare_standard(place: &Place, root: &Path) -> Result<(), PlacePreparationError> {
-        let runtime = runtime_path(place);
-        let runtime_root = standard_root(&runtime, &place.place_name.0);
-        crate::anchored::prepare_standard(
-            root,
-            runtime_root.as_deref(),
-            &place.place_name.0,
-            &runtime,
-        )
     }
 
     #[cfg(not(unix))]
