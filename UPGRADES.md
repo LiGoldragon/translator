@@ -1,5 +1,9 @@
 # Upgrades
 
+## 0.5.0 — signal 11.0.0
+
+Only the signal pin moves: signal 11.0.0 (6d4eb74), which carries no transport feature and no tokio. A consumer repins signal with it, so `links = "signal"` finds one package in its graph.
+
 ## 0.4.2 — the datom feature carries signal/datom
 
 The `datom` feature now also turns on signal's `datom` feature, the edge the build base's feature set asks of a repository that builds signal with it. The pins stay: signal 10.4.1 (d77169d), datom-codec 09a0526, protos c93b598. No other change.
