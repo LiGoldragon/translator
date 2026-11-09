@@ -29,12 +29,32 @@ impl Root {
 
 impl Drop for Root {
     fn drop(&mut self) {
-        let _ = Command::new("chmod")
-            .arg("-R")
-            .arg("u+rwx")
-            .arg(&self.0)
-            .status();
+        // No child process is spawned here: a forked child holds a copy of every open
+        // descriptor until its exec, and a flock stays held while any copy is open, so a
+        // spawn in one test could keep another test's released lock taken.
+        restore_access(&self.0);
         let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Gives the owner read, write and search access to a tree, so it can be removed.
+fn restore_access(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.file_type().is_symlink() {
+        return;
+    }
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(permissions.mode() | 0o700);
+    let _ = std::fs::set_permissions(path, permissions);
+    if metadata.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                restore_access(&entry.path());
+            }
+        }
     }
 }
 
