@@ -1,5 +1,9 @@
 # Upgrades
 
+## 0.4.2 — the datom feature carries signal/datom
+
+The `datom` feature now also turns on signal's `datom` feature, the edge the build base's feature set asks of a repository that builds signal with it. The pins stay: signal 10.4.1 (d77169d), datom-codec 09a0526, protos c93b598. No other change.
+
 ## 0.4.1 — datom-codec 09a0526, protos c93b598, signal 10.4.1
 
 Only the pins move: datom-codec 0.33.1 (09a0526), protos 0.33.0 (c93b598) and signal 10.4.1 (d77169d), with the build-dependency ethos-zero 22.0.0 (1976e45). The generator input follows this repository's build-base. A consumer repins signal with them, so `links = "signal"` finds one package in its graph.

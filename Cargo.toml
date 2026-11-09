@@ -1,6 +1,6 @@
 [package]
 name = "translator"
-version = "0.4.1"
+version = "0.4.2"
 rust-version = "1.89"
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -8,7 +8,7 @@ publish = false
 
 [features]
 default = []
-datom = ["dep:datom-codec", "dep:protos"]
+datom = ["dep:datom-codec", "dep:protos", "signal/datom"]
 text = ["datom"]
 unix = ["dep:libc", "dep:nix"]
 

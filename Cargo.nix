@@ -1203,6 +1203,16 @@ rec {
         };
         dependencies = [
           {
+            name = "datom-codec";
+            packageId = "datom-codec";
+            optional = true;
+          }
+          {
+            name = "protos";
+            packageId = "protos";
+            optional = true;
+          }
+          {
             name = "rkyv";
             packageId = "rkyv";
             usesDefaultFeatures = false;
@@ -1223,6 +1233,7 @@ rec {
           "datom" = [ "dep:datom-codec" "dep:protos" ];
           "transport" = [ "dep:tokio" ];
         };
+        resolvedDefaultFeatures = [ "datom" ];
       };
       "simdutf8" = rec {
         crateName = "simdutf8";
@@ -1405,7 +1416,7 @@ rec {
       };
       "translator" = rec {
         crateName = "translator";
-        version = "0.4.1";
+        version = "0.4.2";
         edition = "2021";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         dependencies = [
@@ -1449,7 +1460,7 @@ rec {
           }
         ];
         features = {
-          "datom" = [ "dep:datom-codec" "dep:protos" ];
+          "datom" = [ "dep:datom-codec" "dep:protos" "signal/datom" ];
           "text" = [ "datom" ];
           "unix" = [ "dep:libc" "dep:nix" ];
         };
