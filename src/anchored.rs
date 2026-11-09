@@ -61,7 +61,7 @@ fn validate(path: &Path, stat: &Stat, expected: FileType) -> Outcome<()> {
             "owned by another user",
         ));
     }
-    if u32::from(stat.st_mode) & 0o022 != 0 {
+    if stat.st_mode & 0o022 != 0 {
         return Err(refusal(
             path,
             io::ErrorKind::PermissionDenied,
