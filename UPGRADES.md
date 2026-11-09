@@ -1,5 +1,9 @@
 # Upgrades
 
+## 0.4.1 — datom-codec 09a0526, protos c93b598, signal 10.4.1
+
+Only the pins move: datom-codec 0.33.1 (09a0526), protos 0.33.0 (c93b598) and signal 10.4.1 (d77169d), with the build-dependency ethos-zero 22.0.0 (1976e45). The generator input follows this repository's build-base. A consumer repins signal with them, so `links = "signal"` finds one package in its graph.
+
 ## 0.4.0 — datom-codec 0bbeb11, protos 4024614, signal 10.4.0
 
 Only the pins move: datom-codec 0.33.1 (0bbeb11), protos 0.33.0 (4024614) and

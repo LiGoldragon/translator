@@ -3,7 +3,10 @@
 
   inputs = {
     base.url = "github:LiGoldragon/build-base";
-    ethos-zero.url = "github:LiGoldragon/ethos-zero";
+    ethos-zero = {
+      url = "github:LiGoldragon/ethos-zero";
+      inputs.base.follows = "base";
+    };
   };
 
   # Cargo.nix is generated from Cargo.lock by the build base's crate2nix and

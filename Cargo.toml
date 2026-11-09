@@ -1,6 +1,6 @@
 [package]
 name = "translator"
-version = "0.4.0"
+version = "0.4.1"
 rust-version = "1.89"
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -13,9 +13,9 @@ text = ["datom"]
 unix = ["dep:libc", "dep:nix"]
 
 [dependencies]
-signal = { git = "https://github.com/LiGoldragon/signal", rev = "7e6dfe5", default-features = false }
-datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "0bbeb11", optional = true }
-protos = { git = "https://github.com/LiGoldragon/protos", rev = "4024614", optional = true }
+signal = { git = "https://github.com/LiGoldragon/signal", rev = "d77169d", default-features = false }
+datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", optional = true }
+protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598", optional = true }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 libc = { version = "0.2", optional = true }
 nix = { version = "0.30", features = ["poll", "socket"], optional = true }
