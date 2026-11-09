@@ -110,15 +110,15 @@ fn current_process_peer_is_live_and_matches_kernel_credentials() {
     let peer = LivePeer::capture(crate_identity(&credentials)).unwrap();
     assert!(peer.matches(&credentials));
     assert!(peer.matches_caller(&translator::Caller {
-        process_id: credentials.process_id.clone(),
-        user_id: credentials.user_id.clone(),
+        process_id: credentials.process_id,
+        user_id: credentials.user_id,
     }));
     drop(right);
 }
 
 fn crate_identity(credentials: &PeerCredentials) -> translator::PeerIdentity {
     translator::PeerIdentity {
-        user_id: credentials.user_id.clone(),
-        process_id: credentials.process_id.clone(),
+        user_id: credentials.user_id,
+        process_id: credentials.process_id,
     }
 }
