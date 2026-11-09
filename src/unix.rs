@@ -279,7 +279,7 @@ pub fn accept_with_retry(
     listener: &std::os::unix::net::UnixListener,
     retry_delay: Duration,
 ) -> std::io::Result<(std::os::unix::net::UnixStream, std::os::unix::net::SocketAddr)> {
-    accept_with_retry_using(|| listener.accept(), |delay| std::thread::sleep(delay), retry_delay)
+    accept_with_retry_using(|| listener.accept(), std::thread::sleep, retry_delay)
 }
 
 pub fn accept_with_retry_using<T>(
