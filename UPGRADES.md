@@ -1,5 +1,12 @@
 # Upgrades
 
+## 0.4.0 — datom-codec 0bbeb11, protos 4024614, signal 10.4.0
+
+Only the pins move: datom-codec 0.33.1 (0bbeb11), protos 0.33.0 (4024614) and
+signal 10.4.0 (7e6dfe5). A consumer repins signal with them, so `links = "signal"`
+resolves to one package, and runs its tests. The generated identity and placement
+contracts are checked with ethos-zero daa22ee.
+
 ## 0.3.2 — one operation on a prepared place
 
 `ScopedPreparation::with_prepared_place` runs a caller's operation on a prepared place.
