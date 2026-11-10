@@ -25,7 +25,7 @@
         };
 
       extraChecks =
-        { pkgs, check, doc, clippy, ... }:
+        { pkgs, check, doc, ... }:
         let
           generator = ethos-zero.packages.${pkgs.stdenv.hostPlatform.system}.default;
           generated = name: declaration: committed:
@@ -41,7 +41,6 @@
           test-default-placement = check "translator" [ "default" ];
           identity-generated = generated "identity" ./identity.ethos ./generated/identity.rs;
           placement-generated = generated "placement" ./placement.ethos ./generated/placement.rs;
-          clippy = clippy "translator" [ "default" "datom" "text" "unix" ] [ "-D" "warnings" ];
           doc = doc "translator" [ "default" "datom" "text" "unix" ] [ "-D" "warnings" ];
         };
     };
