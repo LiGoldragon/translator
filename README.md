@@ -21,6 +21,21 @@ At Nexus start, call `Preparable::prepare_for_start` once on the resolved
 `metaflow/<place-name>` exists it moves that directory to `nexus/<place-name>`;
 when both state directories exist it returns `PlacePreparationError::StateConflict`
 with both paths. Legacy runtime directories are ephemeral and remain untouched.
+## The place file
+
+A Nexus reads its place before any socket opens from its place file,
+`$XDG_CONFIG_HOME/nexus/<place-name>/<nexus-name>.signal`: one framed signal
+holding the `Place`, the same type for every Nexus (`place_file`). One tool
+compiles it from datom for all of them:
+
+```sh
+echo '{ main /run/user/1001/nexus/main /home/li/.local/state/nexus/main }' > place.datom
+nexus-configure 'Compile.{ place.datom ~/.config/nexus/main/flow-nexus.signal }'
+```
+
+In Nix the file is its own derivation, `lib.<system>.mkPlaceFile { placeName;
+runtime; state; }`.
+
 # Translator
 
 The optional `unix` feature supplies policy-free Unix transport mechanics:

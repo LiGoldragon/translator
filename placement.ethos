@@ -1,8 +1,23 @@
 Library
 []
-[ PlaceName.String
-  Runtime.String
-  State.String
-  Place.{ PlaceName Runtime State } ]
+[ PlaceName.String                       ; main, next
+  Runtime.String                         ; the directory of the sockets
+  State.String                           ; the directory of the memory
+  Place.{ PlaceName Runtime State }      ; what every Nexus starts with
+  NexusName.String                       ; flow-nexus: the place file's name
+  FilePath.String
+  Reason.String
+  FileFault.{ FilePath Reason }
+  PlaceFileRefusal.[ Unlocated.Reason    ; no configuration home
+                     Unreadable.FileFault
+                     Undecodable.FileFault
+                     Invalid.FileFault
+                     Unwritable.FileFault ]
+  DatomFile.String                       ; a place written in datom
+  SignalFile.String                      ; the place file, framed signal
+  Compilation.{ DatomFile SignalFile }
+  Configure.[ Compile.Compilation ]      ; what nexus-configure takes
+  Configured.[ Compiled.SignalFile       ; what nexus-configure answers
+               Refused.PlaceFileRefusal ] ]
 []
 []

@@ -1,10 +1,15 @@
 [package]
 name = "translator"
-version = "0.5.0"
+version = "0.6.0"
 rust-version = "1.89"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
+
+[[bin]]
+name = "nexus-configure"
+path = "src/bin/nexus-configure.rs"
+required-features = ["text"]
 
 [features]
 default = []

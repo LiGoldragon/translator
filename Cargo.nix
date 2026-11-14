@@ -1415,8 +1415,15 @@ rec {
       };
       "translator" = rec {
         crateName = "translator";
-        version = "0.5.0";
+        version = "0.6.0";
         edition = "2021";
+        crateBin = [
+          {
+            name = "nexus-configure";
+            path = "src/bin/nexus-configure.rs";
+            requiredFeatures = [ "text" ];
+          }
+        ];
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         dependencies = [
           {

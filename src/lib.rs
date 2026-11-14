@@ -434,6 +434,8 @@ pub mod placement {
 #[cfg(unix)]
 mod anchored;
 
+pub mod place_file;
+
 #[path = "../generated/identity.rs"]
 pub mod identity;
 

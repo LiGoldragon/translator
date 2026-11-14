@@ -1,5 +1,28 @@
 # Upgrades
 
+## 0.6.0 — the place file and nexus-configure
+
+A Nexus's place, the shared `Place` of placement.ethos, is read at start from
+its place file, `$XDG_CONFIG_HOME/nexus/<place-name>/<nexus-name>.signal`
+(`$HOME/.config` when the variable is unset or empty): one framed signal
+holding the Place, the same file for every Nexus.
+
+- `place_file`: `ConfigurationHome` (`LocatesConfigurationHome`) and
+  `LocatesPlaceFile` say where a Nexus's place file lies; `ReadsPlaceFile`
+  reads it (none where there is no file; a file that is not one framed Place,
+  or holds another place or a relative directory, is refused naming the file);
+  `WritesPlaceFile` replaces it whole.
+- placement.ethos gains `NexusName`, `PlaceFileRefusal` and what
+  nexus-configure takes and answers: `Configure.[ Compile.{ DatomFile
+  SignalFile } ]` and `Configured.[ Compiled.SignalFile
+  Refused.PlaceFileRefusal ]`.
+- The binary `nexus-configure` (feature `text`) compiles a place written in
+  datom into its place file: `nexus-configure 'Compile.{ place.datom
+  flow-nexus.signal }'` answers `Compiled.<signal file>`, or `Refused.` with
+  the file at fault and why (exit 2). `packages.nexus-configure` builds it;
+  `lib.<system>.mkPlaceFile { placeName; runtime; state; }` is a place file as
+  its own derivation.
+
 ## 0.5.0 — signal 11.0.0
 
 Only the signal pin moves: signal 11.0.0 (6d4eb74), which carries no transport feature and no tokio. A consumer repins signal with it, so `links = "signal"` finds one package in its graph.
