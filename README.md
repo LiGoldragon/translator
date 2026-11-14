@@ -25,8 +25,10 @@ with both paths. Legacy runtime directories are ephemeral and remain untouched.
 
 A Nexus reads its place before any socket opens from its place file,
 `$XDG_CONFIG_HOME/nexus/<place-name>/<nexus-name>.signal`: one framed signal
-holding the `Place`, the same type for every Nexus (`place_file`). One tool
-compiles it from datom for all of them:
+holding the `Place`, the same type for every Nexus (`place_file`). A Nexus
+and the client that speaks for it find the place by its name and the
+configuration home, in that file alone (`FindsPlace`); with no file they are
+refused, naming it. One tool compiles it from datom for all of them:
 
 ```sh
 echo '{ main /run/user/1001/nexus/main /home/li/.local/state/nexus/main }' > place.datom

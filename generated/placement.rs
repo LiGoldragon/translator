@@ -48,6 +48,7 @@ pub struct FileFault {
 #[cfg_attr(feature = "datom", derive(datom_codec::Datomizable, datom_codec::Composing))]
 pub enum PlaceFileRefusal {
     Unlocated(Reason),
+    Missing(FilePath),
     Unreadable(FileFault),
     Undecodable(FileFault),
     Invalid(FileFault),

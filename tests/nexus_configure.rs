@@ -57,11 +57,11 @@ fn a_datom_place_compiles_into_the_place_file() {
             path: PathBuf::from(&compilation.signal_file.0)
         }
         .read_place(&PlaceName("main".into())),
-        Ok(Some(Place {
+        Ok(Place {
             place_name: PlaceName("main".into()),
             runtime: Runtime("/run/user/1001/nexus/main".into()),
             state: State("/home/li/.local/state/nexus/main".into()),
-        }))
+        })
     );
 }
 

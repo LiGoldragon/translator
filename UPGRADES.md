@@ -9,9 +9,12 @@ holding the Place, the same file for every Nexus.
 
 - `place_file`: `ConfigurationHome` (`LocatesConfigurationHome`) and
   `LocatesPlaceFile` say where a Nexus's place file lies; `ReadsPlaceFile`
-  reads it (none where there is no file; a file that is not one framed Place,
-  or holds another place or a relative directory, is refused naming the file);
-  `WritesPlaceFile` replaces it whole.
+  reads it (a place file is required: where there is none, or the file is not
+  one framed Place, or holds another place or a relative directory, the read is
+  refused naming the file, `Missing` for the first; no default place is
+  resolved); `FindsPlace`, on `PlaceName`, is the one way both a Nexus and its
+  client find their place: by the place name and the configuration home, in the
+  place file alone; `WritesPlaceFile` replaces it whole.
 - placement.ethos gains `NexusName`, `PlaceFileRefusal` and what
   nexus-configure takes and answers: `Configure.[ Compile.{ DatomFile
   SignalFile } ]` and `Configured.[ Compiled.SignalFile

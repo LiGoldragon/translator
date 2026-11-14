@@ -157,18 +157,22 @@ impl FaultsFile for Path {
 pub trait ReadsPlaceFile {
     /// The most a place file holds.
     const CAPACITY: usize = 64 * 1024;
-    /// The place the file holds, or none where there is no file. A file
-    /// that is not one framed Place, or whose Place is not `place_name`'s or
-    /// not absolute, is refused naming the file.
-    fn read_place(&self, place_name: &PlaceName) -> Result<Option<Place>, PlaceFileRefusal>;
+    /// The place the file holds. There is no default place: where there is
+    /// no file, or the file is not one framed Place, or its Place is not
+    /// `place_name`'s or not absolute, the Nexus is refused naming the file.
+    fn read_place(&self, place_name: &PlaceName) -> Result<Place, PlaceFileRefusal>;
 }
 
 impl ReadsPlaceFile for PlaceFile {
-    fn read_place(&self, place_name: &PlaceName) -> Result<Option<Place>, PlaceFileRefusal> {
+    fn read_place(&self, place_name: &PlaceName) -> Result<Place, PlaceFileRefusal> {
         let path = self.path.as_path();
         let mut file = match std::fs::File::open(path) {
             Ok(file) => file,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                return Err(PlaceFileRefusal::Missing(FilePath(
+                    path.to_string_lossy().into_owned(),
+                )));
+            }
             Err(error) => return Err(PlaceFileRefusal::Unreadable(path.fault(error))),
         };
         let body = file
@@ -196,7 +200,32 @@ impl ReadsPlaceFile for PlaceFile {
                 place.place_name.0, place_name.0
             ))));
         }
-        Ok(Some(place))
+        Ok(place)
+    }
+}
+
+/// A Nexus, and the client that speaks for it, find the place by its name
+/// and the configuration home, in the place file and nowhere else.
+pub trait FindsPlace {
+    /// The place `nexus_name`'s file holds under `home`.
+    fn find_place_under(
+        &self,
+        nexus_name: &NexusName,
+        home: &ConfigurationHome,
+    ) -> Result<Place, PlaceFileRefusal>;
+    /// `find_place_under` this process's configuration home.
+    fn find_place(&self, nexus_name: &NexusName) -> Result<Place, PlaceFileRefusal> {
+        self.find_place_under(nexus_name, &ConfigurationHome::of_process()?)
+    }
+}
+
+impl FindsPlace for PlaceName {
+    fn find_place_under(
+        &self,
+        nexus_name: &NexusName,
+        home: &ConfigurationHome,
+    ) -> Result<Place, PlaceFileRefusal> {
+        home.place_file(nexus_name, self)?.read_place(self)
     }
 }
 

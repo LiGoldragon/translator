@@ -9,6 +9,7 @@ Library
   Reason.String
   FileFault.{ FilePath Reason }
   PlaceFileRefusal.[ Unlocated.Reason    ; no configuration home
+                     Missing.FilePath    ; no place file: a Nexus does not start without one
                      Unreadable.FileFault
                      Undecodable.FileFault
                      Invalid.FileFault

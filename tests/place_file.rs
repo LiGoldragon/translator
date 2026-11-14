@@ -3,8 +3,8 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use translator::place_file::{
-    ConfigurationHome, LocatesConfigurationHome, LocatesPlaceFile, PlaceFile, ReadsPlaceFile,
-    WritesPlaceFile,
+    ConfigurationHome, FindsPlace, LocatesConfigurationHome, LocatesPlaceFile, PlaceFile,
+    ReadsPlaceFile, WritesPlaceFile,
 };
 use translator::placement::{
     FileFault, FilePath, NexusName, Place, PlaceFileRefusal, PlaceName, Runtime, State,
@@ -87,15 +87,20 @@ fn the_place_file_lies_in_its_place_under_the_configuration_home() {
 }
 
 #[test]
-fn a_written_place_reads_back_and_an_absent_file_is_none() {
+fn a_written_place_reads_back_and_an_absent_file_is_refused_naming_it() {
     let root = Root::new("round-trip");
     let file = PlaceFile {
         path: root.0.join("nexus/main/flow-nexus.signal"),
     };
     let main = PlaceName("main".into());
-    assert_eq!(file.read_place(&main), Ok(None));
+    assert_eq!(
+        file.read_place(&main),
+        Err(PlaceFileRefusal::Missing(FilePath(
+            file.path.to_string_lossy().into_owned()
+        )))
+    );
     file.write_place(&place("main")).expect("written");
-    assert_eq!(file.read_place(&main), Ok(Some(place("main"))));
+    assert_eq!(file.read_place(&main), Ok(place("main")));
     let leftovers = std::fs::read_dir(root.0.join("nexus/main"))
         .unwrap()
         .count();
@@ -174,4 +179,29 @@ fn a_relative_place_is_neither_written_nor_read() {
         file.read_place(&PlaceName("main".into())),
         Err(PlaceFileRefusal::Invalid(_))
     ));
+}
+
+#[test]
+fn a_place_is_found_by_its_name_in_the_place_file_under_the_configuration_home_alone() {
+    let root = Root::new("found");
+    let home = ConfigurationHome::under(Some(root.0.as_os_str()), None).expect("home");
+    let main = PlaceName("main".into());
+    let file = home.place_file(&flow(), &main).expect("located");
+    // Nothing else holds a place: no file is a refusal naming the file, not
+    // a place at defaults.
+    assert_eq!(
+        main.find_place_under(&flow(), &home),
+        Err(PlaceFileRefusal::Missing(FilePath(
+            file.path.to_string_lossy().into_owned()
+        )))
+    );
+    file.write_place(&place("main")).expect("written");
+    assert_eq!(main.find_place_under(&flow(), &home), Ok(place("main")));
+    // The place is read from the file, wherever its Runtime lies.
+    let elsewhere = Place {
+        runtime: Runtime("/elsewhere/runtime".into()),
+        ..place("main")
+    };
+    file.write_place(&elsewhere).expect("written");
+    assert_eq!(main.find_place_under(&flow(), &home), Ok(elsewhere));
 }
