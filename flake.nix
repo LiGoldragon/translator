@@ -60,10 +60,13 @@
         workspace.packages
         // {
           # nexus-configure, the one tool that compiles a place written in
-          # datom into the place file every Nexus reads at start.
+          # datom into the place file every Nexus reads at start. Its
+          # features are the build base's datom set, so the library it links
+          # is the one a Nexus taking translator with text and unix links.
           nexus-configure = workspace.binaries "translator" [
             "default"
             "text"
+            "unix"
           ];
         }
       ) workspaces;
