@@ -353,11 +353,12 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "signal"
-version = "11.0.0"
-source = "git+https://github.com/LiGoldragon/signal?rev=6d4eb74#6d4eb74a238ea4a6149bd12c42a8c06aec01b154"
+version = "11.1.0"
+source = "git+https://github.com/LiGoldragon/signal?rev=b145ddb#b145ddb40c73d2545697fd9c8e049e562978a3ac"
 dependencies = [
  "datom-codec",
  "ethos-zero",
+ "futures-core",
  "protos",
  "rkyv",
  "thiserror",
@@ -434,7 +435,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "translator"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "datom-codec",
  "libc",

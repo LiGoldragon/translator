@@ -1192,20 +1192,25 @@ rec {
       };
       "signal" = rec {
         crateName = "signal";
-        version = "11.0.0";
+        version = "11.1.0";
         edition = "2024";
         links = "signal";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/signal";
-          rev = "6d4eb74a238ea4a6149bd12c42a8c06aec01b154";
-          sha256 = "0hqy8k58s6sc9wz76k8iq40bv636js5s951zgd01ncrxcy6h776a";
+          rev = "b145ddb40c73d2545697fd9c8e049e562978a3ac";
+          sha256 = "1jz3hjcflxr5ngipksmm1vd39xjkbp58fvs7yfkv564ddccbin7p";
         };
         dependencies = [
           {
             name = "datom-codec";
             packageId = "datom-codec";
             optional = true;
+          }
+          {
+            name = "futures-core";
+            packageId = "futures-core";
+            usesDefaultFeatures = false;
           }
           {
             name = "protos";
@@ -1415,7 +1420,7 @@ rec {
       };
       "translator" = rec {
         crateName = "translator";
-        version = "0.5.0";
+        version = "0.5.1";
         edition = "2021";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         dependencies = [

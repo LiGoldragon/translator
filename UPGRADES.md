@@ -1,5 +1,9 @@
 # Upgrades
 
+## 0.5.1 — signal 11.1.0
+
+Only the signal pin moves: signal 11.1.0 (b145ddb), which adds the subscription Frame and Stream and changes nothing this crate uses. A consumer repins signal with it, so `links = "signal"` finds one package in its graph.
+
 ## 0.5.0 — signal 11.0.0
 
 Only the signal pin moves: signal 11.0.0 (6d4eb74), which carries no transport feature and no tokio. A consumer repins signal with it, so `links = "signal"` finds one package in its graph.
