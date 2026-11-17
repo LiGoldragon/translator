@@ -1,5 +1,11 @@
 # Upgrades
 
+## 0.6.1 — signal 11.2.0
+
+0.6.0 (`6892a15`) repinned on signal 11.2.0 (`4f5cbb9`), the Signal that
+holds Frame, Stream and Following, so a Nexus that serves a subscription
+links one Signal with its place. Nothing else changes.
+
 ## 0.6.0 — the place file and nexus-configure
 
 A Nexus's place, the shared `Place` of placement.ethos, is read at start from
