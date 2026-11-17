@@ -1192,14 +1192,14 @@ rec {
       };
       "signal" = rec {
         crateName = "signal";
-        version = "11.1.0";
+        version = "11.2.0";
         edition = "2024";
         links = "signal";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/signal";
-          rev = "b145ddb40c73d2545697fd9c8e049e562978a3ac";
-          sha256 = "1jz3hjcflxr5ngipksmm1vd39xjkbp58fvs7yfkv564ddccbin7p";
+          rev = "4f5cbb9322ecae7a8821439179e778d495d7804a";
+          sha256 = "14f2bwprz32psr58n9i36padya0r4p54hwm1yq145h1ab6nawvk2";
         };
         dependencies = [
           {
@@ -1420,7 +1420,7 @@ rec {
       };
       "translator" = rec {
         crateName = "translator";
-        version = "0.5.1";
+        version = "0.5.2";
         edition = "2021";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         dependencies = [

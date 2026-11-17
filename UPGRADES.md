@@ -1,5 +1,9 @@
 # Upgrades
 
+## 0.5.2 — signal 11.2.0
+
+Only the signal pin moves: signal 11.2.0 (4f5cbb9), which adds `signal::Following` and changes nothing this crate uses. A consumer repins signal with it, so `links = "signal"` finds one package in its graph.
+
 ## 0.5.1 — signal 11.1.0
 
 Only the signal pin moves: signal 11.1.0 (b145ddb), which adds the subscription Frame and Stream and changes nothing this crate uses. A consumer repins signal with it, so `links = "signal"` finds one package in its graph.
