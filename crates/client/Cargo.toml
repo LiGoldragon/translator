@@ -1,0 +1,26 @@
+[package]
+name = "translator-client"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/LiGoldragon/translator"
+description = "The client end of a translator's text lanes: a CLI's one datom, sent as text to the translator of a Nexus at a place, and every answer it reads back."
+publish = false
+
+[features]
+default = []
+datom = ["dep:datom-codec", "dep:protos", "nexus-exchange/datom"]
+
+[dependencies]
+datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", optional = true }
+nexus-exchange = { git = "https://github.com/LiGoldragon/nexus", rev = "8976179c940b4a822990f519515084cb62d3f908", default-features = false }
+protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598", optional = true }
+rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false }
+shared-translator = { package = "translator", git = "https://github.com/LiGoldragon/translator", rev = "29601a3", default-features = false, features = ["unix"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+unused = { level = "warn", priority = -1 }
+dead_code = "warn"

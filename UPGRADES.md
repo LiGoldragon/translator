@@ -1,5 +1,49 @@
 # Upgrades
 
+## 0.5.3, translator-client 0.1.0 and translator-serving 0.1.0 — what every translator does alike
+
+The repository becomes a workspace. `translator` moves to 0.5.3 with no change
+to its code, its features or its dependencies; its manifest gains only the
+`[workspace]` table. The version moves because the new members take
+`translator` 0.5.2 from git: the workspace then holds this crate and that
+revision of it, and two packages of one name and one version give crate2nix
+package identities that carry the checkout's absolute path, so the committed
+`Cargo.nix` would differ from the one the build base's check generates. A
+consumer keeps 0.5.2; there is nothing to do for 0.5.3.
+
+Two new members hold what every translator process did by hand:
+
+- `translator-client` 0.1.0: `TextClient` with `TextLane`, `TranslatorPlacing`
+  (a text lane's socket in a place, named after the Nexus), `TextRequesting`
+  (`request`, `request_stream`), `ClientError`, and `TextInvocation` with
+  `Invoking` and `AnswerPrinting` for a CLI's whole invocation. Feature
+  `datom` derives Datom on `TextLane`; nothing else needs it.
+- `translator-serving` 0.1.0: the traits a translator implements, `Translator`,
+  `PublicTranslating`, `MetaTranslating` (with `Settling`),
+  `EmissionAnswering` and `PairLaunching`; the serving, `TranslatorServing`,
+  `Connection` with `ConnectionServing`, `NexusCalling` and
+  `EmissionRestoring`; the text budget, `ValidTextBudget` with `Budgeting` and
+  `TextBudgeting`; the bootstrap, `TranslatorBootstrap` with
+  `BootstrapReading`; and the pair launcher, `Pairing` with `PairReading` and
+  `PairRunning`. Its kinds are declared in `crates/serving/ethos/serving.ethos`.
+  Reading text is per consumer: its `text` feature, which a translator turns
+  on, compiles in the lanes, the traits and the pair launcher and turns on
+  this crate's `text`; without it the crate holds its kinds, its errors and
+  its calls and links no Datom. Its `datom` feature derives Datom on its
+  kinds.
+
+Both take this crate as `translator` at 29601a3 from git, and the nexus
+crates at 8976179, the revisions a consumer already locks. A client-facing
+failure names no component: an exchange error a translator answers with reads
+`Nexus exchange error`, and a CLI's reads `translator client error`.
+
+The flake moves onto build-base 6514496 and ethos-zero 30.0.1 (`2999292`),
+which generates `identity.rs` and `placement.rs` unchanged.
+
+How to adopt: depend on `translator-client` from the CLI and on
+`translator-serving` from the translator process, at this repository's
+revision, and implement the five traits for the translator's own type.
+
 ## 0.5.2 — signal 11.2.0
 
 Only the signal pin moves: signal 11.2.0 (4f5cbb9), which adds `signal::Following` and changes nothing this crate uses. A consumer repins signal with it, so `links = "signal"` finds one package in its graph.

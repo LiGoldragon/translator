@@ -1,10 +1,12 @@
 {
-  description = "translator — v1 typed Signal and Datom boundary";
+  description = "translator — v1 typed Signal and Datom boundary, and the text lanes and pair launcher every translator shares";
 
   inputs = {
     base.url = "github:LiGoldragon/build-base";
+    # The generator that regenerates each committed Ethos generation for its
+    # check: 30.0.1, the one the nexus crates are generated with.
     ethos-zero = {
-      url = "github:LiGoldragon/ethos-zero";
+      url = "github:LiGoldragon/ethos-zero/2999292dc67c8608e54d32c333c550b29153cbff";
       inputs.base.follows = "base";
     };
   };
@@ -22,6 +24,8 @@
         { check, ... }:
         {
           translator = check "translator" [ "default" "datom" "text" "unix" ];
+          translator-client = check "translator-client" [ "default" "datom" ];
+          translator-serving = check "translator-serving" [ "default" "datom" "text" ];
         };
 
       extraChecks =
@@ -41,7 +45,11 @@
           test-default-placement = check "translator" [ "default" ];
           identity-generated = generated "identity" ./identity.ethos ./generated/identity.rs;
           placement-generated = generated "placement" ./placement.ethos ./generated/placement.rs;
+          client-generated = generated "client" ./crates/client/ethos/client.ethos ./crates/client/src/generated/client.rs;
+          serving-generated = generated "serving" ./crates/serving/ethos/serving.ethos ./crates/serving/src/generated/serving.rs;
           doc = doc "translator" [ "default" "datom" "text" "unix" ] [ "-D" "warnings" ];
+          doc-translator-client = doc "translator-client" [ "default" "datom" ] [ "-D" "warnings" ];
+          doc-translator-serving = doc "translator-serving" [ "default" "datom" "text" ] [ "-D" "warnings" ];
         };
     };
 }

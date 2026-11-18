@@ -1,10 +1,18 @@
 [package]
 name = "translator"
-version = "0.5.2"
+version = "0.5.3"
 rust-version = "1.89"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
+
+# The text lanes and the pair launcher every translator shares are members of
+# their own, each one dependency set: the client end a CLI links, and the
+# serving end a translator process links. Both take this crate from git at the
+# revision the nexus crates take, so a consumer locks one revision of it.
+[workspace]
+members = [".", "crates/client", "crates/serving"]
+resolver = "2"
 
 [features]
 default = []

@@ -1,0 +1,5 @@
+Library
+[]                                                     ; imports
+[ TextLane.[ PublicText MetaText ] ]                   ; types
+[]                                                     ; traits
+[]                                                     ; associations

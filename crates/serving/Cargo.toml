@@ -1,0 +1,33 @@
+[package]
+name = "translator-serving"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/LiGoldragon/translator"
+description = "The serving every translator shares: its two text lanes, the emission lane the Nexus sends on, and the launcher that starts a Nexus and its translator as a pair."
+publish = false
+
+# Reading and writing text is per consumer: a translator turns on `text`, and
+# the serving's lanes, its traits and the pair launcher are compiled in only
+# there. Without it the crate holds its kinds, its errors and its calls.
+[features]
+default = []
+datom = ["dep:datom-codec", "dep:protos", "nexus-exchange/datom", "shared-translator/datom"]
+text = ["datom", "shared-translator/text"]
+
+[dependencies]
+datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", optional = true }
+nexus-exchange = { git = "https://github.com/LiGoldragon/nexus", rev = "8976179c940b4a822990f519515084cb62d3f908", default-features = false }
+nexus-querying = { git = "https://github.com/LiGoldragon/nexus", rev = "8976179c940b4a822990f519515084cb62d3f908", default-features = false }
+nexus-serving = { git = "https://github.com/LiGoldragon/nexus", rev = "8976179c940b4a822990f519515084cb62d3f908", default-features = false }
+nix = { version = "0.30", features = ["fs", "poll", "process", "signal", "socket", "user"] }
+protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598", optional = true }
+rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+shared-translator = { package = "translator", git = "https://github.com/LiGoldragon/translator", rev = "29601a3", default-features = false, features = ["unix"] }
+signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+unused = { level = "warn", priority = -1 }
+dead_code = "warn"
