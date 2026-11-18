@@ -2,13 +2,12 @@ Library
 [ shared_translator:[ Place PeerIdentity ]             ; imports
   nexus_exchange:[ Admission ] ]
 [ Endpoint.[ Public Meta ]                             ; types
-  Answers.[ Once Followed ]
   Refusal.[ LaneUnavailable ForeignLogin UnpairedEmitter AwaitingSettings ]
   NexusFailure.String
   NodeLimit.Integer
   DepthLimit.Integer
   TextLimits.{ NodeLimit DepthLimit }
-  TranslatorBootstrap.{ Place Admission TextLimits PeerIdentity }
+  TranslatorBootstrap.{ Place Admission TextLimits PeerIdentity } ; TextLimits: the text budget it starts with
   NexusExecutable.String
   TranslatorExecutable.String
   Pairing.{ Place NexusExecutable TranslatorExecutable Admission TextLimits } ]

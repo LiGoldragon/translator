@@ -7,7 +7,7 @@ use signal::Signalizable;
 
 use crate::budget::TextBudgeting;
 use crate::calling::{EmissionRestoring, NexusCalling};
-use crate::generated::{Answers, NexusFailure};
+use crate::generated::NexusFailure;
 
 /// A translator: the process that speaks text for the Nexus `Component`,
 /// ready once its own settings are.
@@ -22,7 +22,8 @@ pub trait Translator: Send + Sync + 'static {
 }
 
 /// The ordinary text lane: the Nexus's public contract, and the call that
-/// carries a query of it to the Nexus with its Caller.
+/// carries a query of it to the Nexus with its Caller. Every answer of the
+/// call's exchange is written back as it comes, until the Nexus ends it.
 pub trait PublicTranslating: Translator {
     /// The public contract's query, read from a CLI's text.
     type PublicInput: Composing;
@@ -33,10 +34,6 @@ pub trait PublicTranslating: Translator {
     /// What the Nexus's public socket answers a call with.
     type PublicResponse;
 
-    /// Whether the query is answered once, or followed: every answer of its
-    /// exchange written back as it comes, until the Nexus ends it.
-    fn answers(input: &Self::PublicInput) -> Answers;
-
     /// The call carrying the query and the Caller it came from.
     fn public_call(caller: Caller, input: Self::PublicInput) -> Self::PublicCall;
 
@@ -44,11 +41,14 @@ pub trait PublicTranslating: Translator {
     fn public_answered(response: Self::PublicResponse) -> Result<Self::PublicOutput, NexusFailure>;
 }
 
-/// How a meta query is settled: answered by the translator, or forwarded as
-/// the part the Nexus answers.
+/// How a meta query is settled: answered by the translator, forwarded as the
+/// part the Nexus answers, or forwarded as a subscription of the Nexus's,
+/// which the translator's own changes are carried into for as long as the
+/// Nexus keeps it open.
 pub enum Settling<Output, Forwarded> {
     Answered(Output),
     Forwarded(Forwarded),
+    Subscribed(Forwarded),
 }
 
 /// The meta text lane: the meta contract, split between the translator's own
@@ -71,9 +71,17 @@ pub trait MetaTranslating: Translator {
     /// The call carrying the Nexus's part and the Caller it came from.
     fn meta_call(caller: Caller, input: Self::NexusMetaInput) -> Self::MetaCall;
 
-    /// The meta answer a response carries, or the failure the Nexus answered
-    /// with.
-    fn meta_answered(response: Self::MetaResponse) -> Result<Self::MetaOutput, NexusFailure>;
+    /// The meta answer a response of the Nexus's carries, the translator's
+    /// own settings as they stand merged into it where it reads out the
+    /// configuration, or the failure the Nexus answered with.
+    fn meta_answered(&self, response: Self::MetaResponse)
+    -> Result<Self::MetaOutput, NexusFailure>;
+
+    /// The answer every open subscription is sent when the translator has
+    /// answered `answered` itself: the change of its own setting that answer
+    /// applied, as a frame of the configuration stream, or `None` when it
+    /// changed nothing a subscription follows.
+    fn announced(&self, answered: &Self::MetaOutput) -> Option<Self::MetaOutput>;
 }
 
 /// The emission lane: what the translator does in the world when its Nexus

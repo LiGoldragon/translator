@@ -856,13 +856,13 @@ rec {
       };
       "nexus-exchange" = rec {
         crateName = "nexus-exchange";
-        version = "0.1.1";
+        version = "0.2.0";
         edition = "2024";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "63a2d477ca194913c847d15f227637d84fbe9aeb";
-          sha256 = "09xh9bps4i0yzcwj3ly4skzwk40pi50xga66032fd2cz9lq66b9p";
+          rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700";
+          sha256 = "13dkff8q4wvsqq9i4hg0m1w1c4qw3xlr9wyv3x8dlzvpx18xdvzs";
         };
         libName = "nexus_exchange";
         dependencies = [
@@ -902,13 +902,13 @@ rec {
       };
       "nexus-querying" = rec {
         crateName = "nexus-querying";
-        version = "0.1.1";
+        version = "0.2.0";
         edition = "2024";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "63a2d477ca194913c847d15f227637d84fbe9aeb";
-          sha256 = "09xh9bps4i0yzcwj3ly4skzwk40pi50xga66032fd2cz9lq66b9p";
+          rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700";
+          sha256 = "13dkff8q4wvsqq9i4hg0m1w1c4qw3xlr9wyv3x8dlzvpx18xdvzs";
         };
         libName = "nexus_querying";
         dependencies = [
@@ -932,13 +932,13 @@ rec {
       };
       "nexus-serving" = rec {
         crateName = "nexus-serving";
-        version = "0.1.1";
+        version = "0.2.0";
         edition = "2024";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "63a2d477ca194913c847d15f227637d84fbe9aeb";
-          sha256 = "09xh9bps4i0yzcwj3ly4skzwk40pi50xga66032fd2cz9lq66b9p";
+          rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700";
+          sha256 = "13dkff8q4wvsqq9i4hg0m1w1c4qw3xlr9wyv3x8dlzvpx18xdvzs";
         };
         libName = "nexus_serving";
         dependencies = [
@@ -1519,7 +1519,7 @@ rec {
           "thread" = [ "linux-raw-sys/prctl" ];
           "use-libc" = [ "libc_errno" "libc" ];
         };
-        resolvedDefaultFeatures = [ "alloc" "default" "fs" "process" "std" ];
+        resolvedDefaultFeatures = [ "alloc" "default" "fs" "process" "rand" "std" ];
       };
       "rustversion" = rec {
         crateName = "rustversion";
@@ -2126,7 +2126,7 @@ rec {
       };
       "translator-client" = rec {
         crateName = "translator-client";
-        version = "0.1.1";
+        version = "0.2.0";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./crates/client; };
         libName = "translator_client";
@@ -2166,13 +2166,13 @@ rec {
           }
         ];
         features = {
-          "datom" = [ "dep:datom-codec" "dep:protos" "nexus-exchange/datom" ];
+          "datom" = [ "dep:datom-codec" "dep:protos" "nexus-exchange/datom" "shared-translator/datom" ];
         };
         resolvedDefaultFeatures = [ "datom" "default" ];
       };
       "translator-serving" = rec {
         crateName = "translator-serving";
-        version = "0.1.1";
+        version = "0.2.0";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./crates/serving; };
         libName = "translator_serving";
@@ -2214,6 +2214,11 @@ rec {
             features = [ "std" "bytecheck" "little_endian" "pointer_width_32" "unaligned" ];
           }
           {
+            name = "rustix";
+            packageId = "rustix";
+            features = [ "rand" ];
+          }
+          {
             name = "signal";
             packageId = "signal";
             usesDefaultFeatures = false;
@@ -2224,6 +2229,12 @@ rec {
             rename = "shared-translator";
             usesDefaultFeatures = false;
             features = [ "unix" ];
+          }
+        ];
+        devDependencies = [
+          {
+            name = "translator-client";
+            packageId = "translator-client";
           }
         ];
         features = {

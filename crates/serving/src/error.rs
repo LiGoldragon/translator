@@ -14,11 +14,16 @@ pub enum TranslatorError {
     Frame(FrameError),
     Transport(TransportError),
     Signal(String),
+    /// Refused before the request was carried: its text is the refusal's.
+    Refused(Refusal),
 }
 
 impl std::fmt::Display for TranslatorError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{self:?}")
+        match self {
+            Self::Refused(refusal) => write!(formatter, "{refusal}"),
+            other => write!(formatter, "{other:?}"),
+        }
     }
 }
 

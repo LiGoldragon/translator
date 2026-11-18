@@ -61,12 +61,14 @@ impl TranslatorPlacing for TextClient {
 
 /// A text lane a datom is sent on and answered on.
 pub trait TextRequesting {
-    /// Sends `text` and returns the translator's first answer.
+    /// Sends `text` and returns the translator's first answer, closing the
+    /// connection after it.
     fn request(&self, text: &str) -> Result<String, ClientError>;
 
-    /// Sends `text` and delivers each answer in order. Returning false stops
-    /// after that answer; returning true keeps the connection open for the
-    /// next, until the translator closes it.
+    /// Sends `text` and delivers each answer in order, until the translator
+    /// ends them: `Ended` is `Ok`, `Failed` is the error carrying its text,
+    /// and a connection closed before either is a broken lane. Returning
+    /// false stops after that answer and closes the connection.
     fn request_stream(
         &self,
         text: &str,
@@ -78,12 +80,10 @@ impl TextRequesting for TextClient {
     fn request(&self, text: &str) -> Result<String, ClientError> {
         let mut first = None;
         self.request_stream(text, |answer| {
-            if first.is_none() {
-                first = Some(answer.to_owned());
-            }
+            first = Some(answer.to_owned());
             false
         })?;
-        first.ok_or_else(|| ClientError::Protocol("translator closed without an answer".into()))
+        first.ok_or_else(|| ClientError::Protocol("translator ended without an answer".into()))
     }
 
     fn request_stream(
@@ -103,17 +103,10 @@ impl TextRequesting for TextClient {
                 self.admission_limit,
             )
             .map_err(ClientError::Transport)?;
-        let mut received = false;
         loop {
-            let response = match stream.read_lane_frame(self.admission_limit) {
-                Ok(response) => response,
-                Err(TransportError::Io(error))
-                    if received && error.kind() == std::io::ErrorKind::UnexpectedEof =>
-                {
-                    return Ok(());
-                }
-                Err(error) => return Err(ClientError::Transport(error)),
-            };
+            let response = stream
+                .read_lane_frame(self.admission_limit)
+                .map_err(ClientError::Transport)?;
             if response.lane != lane {
                 return Err(ClientError::Protocol(
                     "translator answered on another lane".into(),
@@ -122,10 +115,8 @@ impl TextRequesting for TextClient {
             let text = String::from_utf8(response.payload)
                 .map_err(|_| ClientError::Protocol("translator returned non-UTF-8 text".into()))?;
             match response.kind {
-                Kind::Answered if receive(&text) => {
-                    received = true;
-                }
-                Kind::Answered => return Ok(()),
+                Kind::Answered if receive(&text) => {}
+                Kind::Answered | Kind::Ended => return Ok(()),
                 Kind::Failed => return Err(ClientError::Protocol(text)),
                 Kind::Request => {
                     return Err(ClientError::Protocol(

@@ -1,11 +1,14 @@
 //! A translator that writes only its bodies is served whole: ordinary text is
-//! carried to its Nexus with the Caller and answered as text, and each
-//! refusal is answered before anything is read.
+//! carried to its Nexus with the Caller and answered as text until the Nexus
+//! ends the exchange, each refusal is answered before anything is read, and
+//! the translator's own settings are merged into the Nexus's meta readouts
+//! and carried into its open subscriptions.
 
 #![cfg(feature = "text")]
 
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use std::time::Duration;
 
 use nexus_exchange::lane::{Frame, Kind, Lane, LaneReading, LaneWriting};
@@ -14,13 +17,14 @@ use nexus_serving::{OwnedListener, SocketBinding};
 use shared_translator::placement::{Place, PlaceName, Runtime, State};
 use shared_translator::{Caller, PeerIdentity, ProcessId, UserId};
 use signal::{
-    Answer as Answered, ByteViewable, Contracted, Delivery, Dispatch, FrameCapacity, FrameReading,
-    FrameWriting, Restorable, Signal, Signalizable,
+    Answer as Answered, ByteViewable, Contracted, Delivery, Dispatch, Ending, FrameCapacity,
+    FrameReading, FrameWriting, Restorable, Signal, Signalizable,
 };
 use translator_serving::{
-    Answers, Connection, ConnectionServing, DepthLimit, EmissionAnswering, Endpoint,
-    MetaTranslating, NexusFailure, NodeLimit, PairReading, PairedPeer, Pairing, PeerMatching,
-    PublicTranslating, Settling, TextBudgeting, TextLimits, Translator, ValidTextBudget,
+    Connection, ConnectionServing, DepthLimit, EmissionAnswering, Endpoint, FreshInstance,
+    InstanceId, MetaSubscriptions, MetaTranslating, NexusFailure, NodeLimit, PairReading,
+    PairedPeer, Pairing, PeerMatching, PublicTranslating, Settling, TextBudgeting, TextLimits,
+    Translator, ValidTextBudget,
 };
 
 const LIMIT: usize = 4096;
@@ -38,6 +42,7 @@ const LIMIT: usize = 4096;
 enum Query {
     Count(i64),
     Follow,
+    Read,
 }
 
 #[derive(
@@ -52,6 +57,26 @@ enum Query {
 )]
 enum Reply {
     Counted(i64),
+    Refused(i64),
+    Read(Settings),
+    Changed(i64),
+}
+
+/// A readout of the settings: the Nexus's, and the translator's own, which
+/// the Nexus reads out unset as zero.
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    datom_codec::Datomizable,
+    datom_codec::Composing,
+    Clone,
+    Debug,
+    PartialEq,
+)]
+struct Settings {
+    nexus: i64,
+    translator: i64,
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq)]
@@ -104,9 +129,18 @@ impl TextBudgeting for Ready {
     }
 }
 
-/// A counter's translator; `settled` is whether its own settings are set.
+/// A counter's translator; `settled` is whether its own settings are set,
+/// and `count` is its own setting, which the meta lane sets.
 struct CounterTranslator {
     settled: bool,
+    count: RwLock<i64>,
+}
+
+fn translator(settled: bool) -> CounterTranslator {
+    CounterTranslator {
+        settled,
+        count: RwLock::new(5),
+    }
 }
 
 impl Translator for CounterTranslator {
@@ -123,13 +157,6 @@ impl PublicTranslating for CounterTranslator {
     type PublicOutput = Reply;
     type PublicCall = Call;
     type PublicResponse = Response;
-
-    fn answers(input: &Query) -> Answers {
-        match input {
-            Query::Count(_) => Answers::Once,
-            Query::Follow => Answers::Followed,
-        }
-    }
 
     fn public_call(caller: Caller, query: Query) -> Call {
         Call { caller, query }
@@ -150,10 +177,16 @@ impl MetaTranslating for CounterTranslator {
     type MetaCall = Call;
     type MetaResponse = Response;
 
+    /// A count is the translator's own setting; a read and a follow are the
+    /// Nexus's, the follow its subscription.
     fn settle(&self, input: Query) -> Settling<Reply, Query> {
         match input {
-            Query::Count(count) => Settling::Answered(Reply::Counted(count)),
-            follow => Settling::Forwarded(follow),
+            Query::Count(count) => {
+                *self.count.write().expect("count") = count;
+                Settling::Answered(Reply::Counted(count))
+            }
+            Query::Read => Settling::Forwarded(Query::Read),
+            Query::Follow => Settling::Subscribed(Query::Follow),
         }
     }
 
@@ -161,8 +194,22 @@ impl MetaTranslating for CounterTranslator {
         Call { caller, query }
     }
 
-    fn meta_answered(response: Response) -> Result<Reply, NexusFailure> {
-        Self::public_answered(response)
+    /// A readout of the settings carries the translator's own count.
+    fn meta_answered(&self, response: Response) -> Result<Reply, NexusFailure> {
+        Ok(match Self::public_answered(response)? {
+            Reply::Read(settings) => Reply::Read(Settings {
+                translator: *self.count.read().expect("count"),
+                ..settings
+            }),
+            other => other,
+        })
+    }
+
+    fn announced(&self, answered: &Reply) -> Option<Reply> {
+        match answered {
+            Reply::Counted(count) => Some(Reply::Changed(*count)),
+            _ => None,
+        }
     }
 }
 
@@ -199,16 +246,32 @@ fn admission() -> ValidAdmission {
     }
 }
 
-/// Serves one request on `lane` to `endpoint` and returns every frame it is
-/// answered with.
-fn served(
-    translator: &CounterTranslator,
-    runtime: &Path,
+/// What every connection of a test's translator is served under.
+struct Fixture {
+    translator: CounterTranslator,
+    place: Place,
+    subscriptions: MetaSubscriptions,
+}
+
+fn fixture_at(translator: CounterTranslator, runtime: &Path) -> Fixture {
+    Fixture {
+        translator,
+        place: place(runtime),
+        subscriptions: MetaSubscriptions::default(),
+    }
+}
+
+/// Serves one request on `lane` to `endpoint`, as a connection of its own
+/// among the fixture's, on a thread of the `scope`, and returns the client's
+/// end of it.
+fn serving<'scope>(
+    scope: &'scope std::thread::Scope<'scope, '_>,
+    fixture: &'scope Fixture,
     endpoint: Endpoint,
-    nexus: Option<&PairedPeer>,
+    nexus: Option<&'scope PairedPeer>,
     lane: Lane,
     payload: &[u8],
-) -> Vec<Frame> {
+) -> UnixStream {
     let (mut client, mut server) = UnixStream::pair().expect("socket pair");
     client
         .write_lane_frame(
@@ -220,10 +283,23 @@ fn served(
             LIMIT,
         )
         .expect("request frame");
-    let place = place(runtime);
+    scope.spawn(move || {
+        connection(fixture, endpoint, nexus)
+            .serve(&mut server)
+            .expect("request served");
+    });
+    client
+}
+
+/// One connection of the fixture's translator, on `endpoint`.
+fn connection<'a>(
+    fixture: &'a Fixture,
+    endpoint: Endpoint,
+    nexus: Option<&'a PairedPeer>,
+) -> Connection<'a, CounterTranslator> {
     Connection {
-        translator,
-        place: &place,
+        translator: &fixture.translator,
+        place: &fixture.place,
         endpoint,
         admission: admission(),
         bootstrap_budget: ValidTextBudget {
@@ -231,15 +307,29 @@ fn served(
             depth: 8,
         },
         nexus,
+        subscriptions: &fixture.subscriptions,
     }
-    .serve(&mut server)
-    .expect("request served");
-    drop(server);
-    let mut frames = Vec::new();
-    while let Ok(frame) = client.read_lane_frame(LIMIT) {
-        frames.push(frame);
-    }
-    frames
+}
+
+/// Serves one request on `lane` to `endpoint` and returns every frame it is
+/// answered with.
+fn served(
+    translator: CounterTranslator,
+    runtime: &Path,
+    endpoint: Endpoint,
+    nexus: Option<&PairedPeer>,
+    lane: Lane,
+    payload: &[u8],
+) -> Vec<Frame> {
+    let fixture = fixture_at(translator, runtime);
+    std::thread::scope(|scope| {
+        let mut client = serving(scope, &fixture, endpoint, nexus, lane, payload);
+        let mut frames = Vec::new();
+        while let Ok(frame) = client.read_lane_frame(LIMIT) {
+            frames.push(frame);
+        }
+        frames
+    })
 }
 
 /// The one frame a request is answered with.
@@ -248,11 +338,40 @@ fn only(mut frames: Vec<Frame>) -> Frame {
     frames.remove(0)
 }
 
-/// A Nexus at `runtime` that greets one connection, checks that its one
-/// exchange carries `expected` from this process, answers it with each of
-/// `responses` and closes.
-fn nexus(runtime: &Path, expected: Query, responses: Vec<Response>) -> std::thread::JoinHandle<()> {
-    let listener = UnixListener::bind(runtime.join("counter.sock")).expect("Nexus socket");
+/// The text of every answer of a request, which its last frame ends.
+fn answered(frames: &[Frame]) -> Vec<&str> {
+    let (last, answers) = frames.split_last().expect("an ending frame");
+    assert_eq!(last.kind, Kind::Ended, "{frames:?}");
+    assert!(last.payload.is_empty());
+    answers
+        .iter()
+        .map(|answer| {
+            assert_eq!(answer.kind, Kind::Answered);
+            std::str::from_utf8(&answer.payload).expect("answer text")
+        })
+        .collect()
+}
+
+/// One exchange of a Nexus socket, as the Nexus answers it.
+enum Answering {
+    /// Each response, then the exchange's end.
+    Ended(Vec<Response>),
+    /// Each response, then the connection closed with no end.
+    Closed(Vec<Response>),
+    /// Each response, then the end once `release` is received.
+    Held(Vec<Response>, std::sync::mpsc::Receiver<()>),
+}
+
+/// A Nexus socket `socket` in `runtime` that greets one connection, checks
+/// that its one exchange carries `expected` from this process, and answers
+/// it as `answering` says.
+fn nexus_at(
+    runtime: &Path,
+    socket: &str,
+    expected: Query,
+    answering: Answering,
+) -> std::thread::JoinHandle<()> {
+    let listener = UnixListener::bind(runtime.join(socket)).expect("Nexus socket");
     std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("translator connection");
         let capacity = FrameCapacity::from(LIMIT);
@@ -280,20 +399,46 @@ fn nexus(runtime: &Path, expected: Query, responses: Vec<Response>) -> std::thre
             opening.query.caller.process_id,
             ProcessId(i64::from(std::process::id()))
         );
-        for response in responses {
+        let deliver = |stream: &mut UnixStream, delivery: Delivery<Response>| {
             stream
-                .write_frame(
-                    &Delivery::Answer(Answered {
-                        exchange: opening.exchange,
-                        response,
-                    })
-                    .signalize()
-                    .expect("answer"),
-                    capacity,
-                )
-                .expect("answer frame");
+                .write_frame(&delivery.signalize().expect("delivery"), capacity)
+                .expect("delivery frame");
+        };
+        let (responses, ending) = match answering {
+            Answering::Ended(responses) => (responses, Some(None)),
+            Answering::Closed(responses) => (responses, None),
+            Answering::Held(responses, release) => (responses, Some(Some(release))),
+        };
+        for response in responses {
+            deliver(
+                &mut stream,
+                Delivery::Answer(Answered {
+                    exchange: opening.exchange,
+                    response,
+                }),
+            );
+        }
+        if let Some(release) = ending {
+            if let Some(release) = release {
+                release.recv().expect("released");
+            }
+            deliver(
+                &mut stream,
+                Delivery::End(Ending::completed(opening.exchange)),
+            );
         }
     })
+}
+
+/// The public socket of a counter Nexus, ending its one exchange after
+/// `responses`, as every exchange ends.
+fn nexus(runtime: &Path, expected: Query, responses: Vec<Response>) -> std::thread::JoinHandle<()> {
+    nexus_at(
+        runtime,
+        "counter.sock",
+        expected,
+        Answering::Ended(responses),
+    )
 }
 
 fn refusal(frame: &Frame) -> &str {
@@ -317,29 +462,28 @@ fn identity(process: &std::process::Child) -> PeerIdentity {
 }
 
 #[test]
-fn a_query_is_carried_with_its_caller_and_answered_as_text() {
+fn a_query_is_carried_with_its_caller_and_answered_as_text_then_ended() {
     let directory = fixture("once");
     let answering = nexus(
         &directory,
         Query::Count(3),
         vec![Response::Answered(Reply::Counted(6))],
     );
-    let answer = only(served(
-        &CounterTranslator { settled: true },
+    let frames = served(
+        translator(true),
         &directory,
         Endpoint::Public,
         None,
         Lane::PublicText,
         b"Count.3",
-    ));
+    );
     answering.join().expect("Nexus");
-    assert_eq!(answer.kind, Kind::Answered);
-    assert_eq!(answer.payload, b"Counted.6");
+    assert_eq!(answered(&frames), ["Counted.6"]);
     std::fs::remove_dir_all(directory).expect("fixture cleanup");
 }
 
 #[test]
-fn a_followed_query_is_answered_with_every_answer_until_the_nexus_closes() {
+fn every_answer_is_written_back_until_the_nexus_ends_the_exchange() {
     let directory = fixture("followed");
     let answering = nexus(
         &directory,
@@ -349,8 +493,8 @@ fn a_followed_query_is_answered_with_every_answer_until_the_nexus_closes() {
             Response::Answered(Reply::Counted(2)),
         ],
     );
-    let answers = served(
-        &CounterTranslator { settled: true },
+    let frames = served(
+        translator(true),
         &directory,
         Endpoint::Public,
         None,
@@ -358,14 +502,72 @@ fn a_followed_query_is_answered_with_every_answer_until_the_nexus_closes() {
         b"Follow",
     );
     answering.join().expect("Nexus");
-    let texts: Vec<_> = answers
-        .iter()
-        .map(|answer| {
-            assert_eq!(answer.kind, Kind::Answered);
-            std::str::from_utf8(&answer.payload).expect("answer text")
+    assert_eq!(answered(&frames), ["Counted.1", "Counted.2"]);
+    std::fs::remove_dir_all(directory).expect("fixture cleanup");
+}
+
+/// A subscription the Nexus refuses is answered once, its refusal, and
+/// ended; the translator stops on the end, knowing nothing of which answer
+/// is a frame, and the CLI's client returns after reading the refusal.
+#[test]
+fn a_refused_subscription_ends_and_the_client_returns_after_its_refusal() {
+    let directory = fixture("refused");
+    let answering = nexus(
+        &directory,
+        Query::Follow,
+        vec![Response::Answered(Reply::Refused(9))],
+    );
+    let fixture = fixture_at(translator(true), &directory);
+    let listener =
+        UnixListener::bind(directory.join("counter-translator.sock")).expect("translator socket");
+    let client = translator_client::TextClient {
+        socket: directory.join("counter-translator.sock"),
+        lane: translator_client::TextLane::PublicText,
+        admission_limit: LIMIT,
+    };
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let (mut stream, _) = listener.accept().expect("client connection");
+            connection(&fixture, Endpoint::Public, None)
+                .serve(&mut stream)
+                .expect("served");
+        });
+        let mut printed = Vec::new();
+        translator_client::TextRequesting::request_stream(&client, "Follow", |answer| {
+            printed.push(answer.to_owned());
+            true
         })
-        .collect();
-    assert_eq!(texts, ["Counted.1", "Counted.2"]);
+        .expect("the client returns at the end");
+        assert_eq!(printed, ["Refused.9"]);
+    });
+    answering.join().expect("Nexus");
+    std::fs::remove_dir_all(directory).expect("fixture cleanup");
+}
+
+#[test]
+fn a_nexus_that_closes_before_the_end_is_answered_as_a_failure() {
+    let directory = fixture("unended");
+    let answering = nexus_at(
+        &directory,
+        "counter.sock",
+        Query::Count(3),
+        Answering::Closed(vec![Response::Answered(Reply::Counted(6))]),
+    );
+    let frames = served(
+        translator(true),
+        &directory,
+        Endpoint::Public,
+        None,
+        Lane::PublicText,
+        b"Count.3",
+    );
+    answering.join().expect("Nexus");
+    assert_eq!(frames.len(), 2, "{frames:?}");
+    assert_eq!(frames[0].payload, b"Counted.6");
+    assert!(
+        refusal(&frames[1]).contains("closed before ending the exchange"),
+        "{frames:?}"
+    );
     std::fs::remove_dir_all(directory).expect("fixture cleanup");
 }
 
@@ -378,7 +580,7 @@ fn the_nexuss_failure_is_answered_as_a_failure() {
         vec![Response::Failed("no such count".into())],
     );
     let answer = only(served(
-        &CounterTranslator { settled: true },
+        translator(true),
         &directory,
         Endpoint::Public,
         None,
@@ -399,7 +601,7 @@ fn an_emission_from_the_paired_nexus_is_answered() {
     .expect("paired Nexus");
     let emission = Ping::Ping.signalize().expect("emission");
     let answer = only(served(
-        &CounterTranslator { settled: true },
+        translator(true),
         Path::new("/nonexistent"),
         Endpoint::Public,
         Some(&nexus),
@@ -418,7 +620,7 @@ fn an_emission_from_the_paired_nexus_is_answered() {
 #[test]
 fn ordinary_text_waits_for_the_translators_own_settings() {
     let answer = only(served(
-        &CounterTranslator { settled: false },
+        translator(false),
         Path::new("/nonexistent"),
         Endpoint::Public,
         None,
@@ -430,23 +632,112 @@ fn ordinary_text_waits_for_the_translators_own_settings() {
 
 #[test]
 fn meta_text_is_settled_by_the_translator_before_its_settings_are() {
-    let answer = only(served(
-        &CounterTranslator { settled: false },
+    let frames = served(
+        translator(false),
         Path::new("/nonexistent"),
         Endpoint::Meta,
         None,
         Lane::MetaText,
         b"Count.4",
-    ));
-    assert_eq!(answer.kind, Kind::Answered);
-    assert_eq!(answer.payload, b"Counted.4");
+    );
+    assert_eq!(answered(&frames), ["Counted.4"]);
+}
+
+#[test]
+fn a_forwarded_readout_carries_the_translators_own_setting() {
+    let directory = fixture("readout");
+    let answering = nexus_at(
+        &directory,
+        "counter-meta.sock",
+        Query::Read,
+        Answering::Ended(vec![Response::Answered(Reply::Read(Settings {
+            nexus: 1,
+            translator: 0,
+        }))]),
+    );
+    let frames = served(
+        translator(true),
+        &directory,
+        Endpoint::Meta,
+        None,
+        Lane::MetaText,
+        b"Read",
+    );
+    answering.join().expect("Nexus");
+    assert_eq!(answered(&frames), ["Read.{ 1 5 }"]);
+    std::fs::remove_dir_all(directory).expect("fixture cleanup");
+}
+
+/// A subscription of the Nexus's carries the translator's own setting in
+/// its first readout and each change of it after, between the Nexus's
+/// answers, until the Nexus ends it.
+#[test]
+fn the_translators_own_change_is_carried_into_an_open_subscription() {
+    let directory = fixture("subscription");
+    let (release, released) = std::sync::mpsc::channel();
+    let answering = nexus_at(
+        &directory,
+        "counter-meta.sock",
+        Query::Follow,
+        Answering::Held(
+            vec![Response::Answered(Reply::Read(Settings {
+                nexus: 1,
+                translator: 0,
+            }))],
+            released,
+        ),
+    );
+    let fixture = fixture_at(translator(true), &directory);
+    std::thread::scope(|scope| {
+        let mut subscriber = serving(
+            scope,
+            &fixture,
+            Endpoint::Meta,
+            None,
+            Lane::MetaText,
+            b"Follow",
+        );
+        let opened = subscriber.read_lane_frame(LIMIT).expect("opened");
+        assert_eq!(opened.payload, b"Read.{ 1 5 }");
+        let mut setter = serving(
+            scope,
+            &fixture,
+            Endpoint::Meta,
+            None,
+            Lane::MetaText,
+            b"Count.7",
+        );
+        let mut set = Vec::new();
+        while let Ok(frame) = setter.read_lane_frame(LIMIT) {
+            set.push(frame);
+        }
+        assert_eq!(answered(&set), ["Counted.7"]);
+        let changed = subscriber.read_lane_frame(LIMIT).expect("changed");
+        assert_eq!(
+            (changed.kind, changed.payload),
+            (Kind::Answered, b"Changed.7".to_vec())
+        );
+        release.send(()).expect("release the end");
+        let ended = subscriber.read_lane_frame(LIMIT).expect("ended");
+        assert_eq!(ended.kind, Kind::Ended);
+    });
+    answering.join().expect("Nexus");
+    std::fs::remove_dir_all(directory).expect("fixture cleanup");
+}
+
+#[test]
+fn a_fresh_instance_is_thirty_two_hexadecimal_digits_and_new_each_time() {
+    let first = InstanceId::fresh().expect("first");
+    let second = InstanceId::fresh().expect("second");
+    assert_eq!(first.0.len(), 32);
+    assert!(first.0.chars().all(|digit| digit.is_ascii_hexdigit()));
+    assert_ne!(first, second);
 }
 
 #[test]
 fn each_socket_carries_only_its_own_lanes() {
-    let translator = CounterTranslator { settled: true };
     let meta_on_public = only(served(
-        &translator,
+        translator(true),
         Path::new("/nonexistent"),
         Endpoint::Public,
         None,
@@ -458,7 +749,7 @@ fn each_socket_carries_only_its_own_lanes() {
         "lane is unavailable on this endpoint"
     );
     let public_on_meta = only(served(
-        &translator,
+        translator(true),
         Path::new("/nonexistent"),
         Endpoint::Meta,
         None,
@@ -476,7 +767,7 @@ fn an_emission_from_any_process_but_the_paired_nexus_is_refused() {
     let mut other = other_process();
     let nexus = PairedPeer::capture(identity(&other)).expect("paired Nexus");
     let answer = only(served(
-        &CounterTranslator { settled: true },
+        translator(true),
         Path::new("/nonexistent"),
         Endpoint::Public,
         Some(&nexus),

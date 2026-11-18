@@ -1,4 +1,4 @@
-//! One connection to a translator socket: one request, and its answer.
+//! One connection to a translator socket: one request, and its answers.
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -17,7 +17,8 @@ use signal::{ByteViewable, FrameCapacity, Signalizable};
 use crate::budget::{Budgeting, TextBudgeting, ValidTextBudget};
 use crate::calling::{EmissionRestoring, NexusCalling};
 use crate::error::TranslatorError;
-use crate::generated::{Answers, Endpoint, Refusal};
+use crate::generated::{Endpoint, Refusal};
+use crate::subscriptions::{MetaSubscriptions, SubscriptionCarrying};
 use crate::translating::{EmissionAnswering, MetaTranslating, PublicTranslating, Settling};
 
 /// One connection to one of a translator's sockets, and what it is served
@@ -33,12 +34,17 @@ pub struct Connection<'a, T> {
     pub bootstrap_budget: ValidTextBudget,
     /// The Nexus the translator is paired with; `None` admits no emission.
     pub nexus: Option<&'a PairedPeer>,
+    /// The meta connections following a subscription of the Nexus's, which
+    /// the translator's own changes are carried into.
+    pub subscriptions: &'a MetaSubscriptions,
 }
 
 pub trait ConnectionServing {
     /// Serves one connection: its one request frame, read within the
-    /// admission deadline, then its answer, every answer of a followed query,
-    /// or the refusal or failure it is answered with.
+    /// admission deadline, then its answers. A text request is answered with
+    /// each answer of its exchange and then `Ended`, or with `Failed`
+    /// carrying the refusal or failure that ended it; an emission with its
+    /// one outcome, or `Failed`.
     fn serve(&self, stream: &mut UnixStream) -> Result<(), TranslatorError>;
 }
 
@@ -58,22 +64,27 @@ where
         if let Some(refusal) = self.refusal(&request.lane, &caller) {
             return self.fail(&mut io, request.lane, &refusal.to_string());
         }
-        if request.lane == Lane::PublicText {
-            return self.public(stream, io, &request, caller);
-        }
-        let lane = request.lane.clone();
-        let response = match request.lane {
-            Lane::EmissionSignal => self.emission(request.payload),
-            Lane::MetaText => self.meta(&request, caller),
-            Lane::PublicText => Err(TranslatorError::Transport(TransportError::WrongLane)),
-        };
-        let response = response.unwrap_or_else(|error| Frame {
-            lane,
-            kind: Kind::Failed,
-            payload: error.to_string().into_bytes(),
-        });
         drop(io);
-        self.write(stream, &response)
+        match request.lane {
+            Lane::EmissionSignal => {
+                let response = self
+                    .emission(request.payload)
+                    .unwrap_or_else(|error| Frame {
+                        lane: Lane::EmissionSignal,
+                        kind: Kind::Failed,
+                        payload: error.to_string().into_bytes(),
+                    });
+                self.write(stream, &response)
+            }
+            Lane::PublicText => {
+                let answered = self.public(stream, &request, caller);
+                self.end(stream, Lane::PublicText, answered)
+            }
+            Lane::MetaText => {
+                let answered = self.meta(stream, &request, caller);
+                self.end(stream, Lane::MetaText, answered)
+            }
+        }
     }
 }
 
@@ -102,99 +113,101 @@ where
     }
 
     /// Reads the ordinary text into the public query within the translator's
-    /// own budget, carries it to the Nexus, and writes back its answer, or
-    /// every answer of a followed query.
+    /// own budget, carries it to the Nexus, and writes back every answer of
+    /// its exchange as it comes, until the Nexus ends it.
     fn public(
         &self,
         stream: &UnixStream,
-        mut io: DeadlineStream,
         request: &Frame,
         caller: Caller,
     ) -> Result<(), TranslatorError> {
-        let Some(ready) = self.translator.ready() else {
-            return self.fail(
-                &mut io,
-                Lane::PublicText,
-                &Refusal::AwaitingSettings.to_string(),
-            );
-        };
+        let ready = self
+            .translator
+            .ready()
+            .ok_or(TranslatorError::Refused(Refusal::AwaitingSettings))?;
         let mut budget = ready.text_budget().budget();
-        let query = request
-            .text()
-            .map_err(TranslatorError::Transport)
-            .and_then(|text| {
-                shared_translator::decode::<T::PublicInput>(text, &mut budget)
-                    .map_err(|error| TranslatorError::Signal(format!("{error:?}")))
-            });
-        drop(io);
-        let query = match query {
-            Ok(query) => query,
-            Err(error) => {
-                let mut output = self.deadline(stream)?;
-                return self.fail(&mut output, Lane::PublicText, &error.to_string());
-            }
-        };
-        let socket = SocketPaths::<T::Component>::from(self.place).public;
-        let progress = self.admission.deadline;
-        let capacity = FrameCapacity::from(self.admission.frame_capacity);
-        match T::answers(&query) {
-            Answers::Followed => {
-                T::public_call(caller, query).follow(&socket, progress, capacity, |response| {
-                    let output = T::public_answered(response)?;
-                    self.write(stream, &Self::text(Lane::PublicText, &output))
-                })
-            }
-            Answers::Once => {
-                let answered = T::public_call(caller, query)
-                    .ask(&socket, Patience::Progress(progress), capacity)
-                    .and_then(|response| T::public_answered(response).map_err(Into::into));
-                let response = match answered {
-                    Ok(output) => Self::text(Lane::PublicText, &output),
-                    Err(error) => Frame {
-                        lane: Lane::PublicText,
-                        kind: Kind::Failed,
-                        payload: error.to_string().into_bytes(),
-                    },
-                };
-                self.write(stream, &response)
-            }
-        }
+        let text = request.text().map_err(TranslatorError::Transport)?;
+        let query = shared_translator::decode::<T::PublicInput>(text, &mut budget)
+            .map_err(|error| TranslatorError::Signal(format!("{error:?}")))?;
+        T::public_call(caller, query).call(
+            &SocketPaths::<T::Component>::from(self.place).public,
+            Patience::Progress(self.admission.deadline),
+            FrameCapacity::from(self.admission.frame_capacity),
+            |response| {
+                let output = T::public_answered(response)?;
+                self.write(stream, &Self::text(Lane::PublicText, &output))
+            },
+        )
     }
 
     /// Reads the meta text within the bootstrap budget and settles it: the
-    /// translator's own part answered here, the Nexus's carried to its meta
-    /// socket, the whole exchange within one deadline.
-    fn meta(&self, request: &Frame, caller: Caller) -> Result<Frame, TranslatorError> {
+    /// translator's own part answered here and announced to every open
+    /// subscription, the Nexus's carried to its meta socket within one
+    /// deadline, and a subscription of the Nexus's followed for as long as
+    /// the Nexus keeps it open, the translator's own changes carried into it.
+    fn meta(
+        &self,
+        stream: &UnixStream,
+        request: &Frame,
+        caller: Caller,
+    ) -> Result<(), TranslatorError> {
         let text = request.text().map_err(TranslatorError::Transport)?;
         let mut budget = self.bootstrap_budget.budget();
         let query = shared_translator::decode::<T::MetaInput>(text, &mut budget)
             .map_err(|error| TranslatorError::Signal(format!("{error:?}")))?;
-        let output = match self.translator.settle(query) {
-            Settling::Answered(output) => output,
+        let socket = SocketPaths::<T::Component>::from(self.place).meta;
+        let capacity = FrameCapacity::from(self.admission.frame_capacity);
+        match self.translator.settle(query) {
+            Settling::Answered(output) => {
+                self.write(stream, &Self::text(Lane::MetaText, &output))?;
+                if let Some(announced) = self.translator.announced(&output) {
+                    self.subscriptions
+                        .announce(&Self::text(Lane::MetaText, &announced), &self.admission);
+                }
+                Ok(())
+            }
             Settling::Forwarded(input) => {
                 let deadline = Instant::now()
                     .checked_add(self.admission.deadline)
                     .ok_or_else(|| TranslatorError::Signal("meta call deadline overflow".into()))?;
-                let response = T::meta_call(caller, input).ask(
-                    &SocketPaths::<T::Component>::from(self.place).meta,
+                T::meta_call(caller, input).call(
+                    &socket,
                     Patience::Until(deadline),
-                    FrameCapacity::from(self.admission.frame_capacity),
-                )?;
-                T::meta_answered(response)?
+                    capacity,
+                    |response| {
+                        let output = self.translator.meta_answered(response)?;
+                        self.write(stream, &Self::text(Lane::MetaText, &output))
+                    },
+                )
             }
-        };
-        Ok(Self::text(Lane::MetaText, &output))
+            Settling::Subscribed(input) => {
+                let mut carried = None;
+                let followed = T::meta_call(caller, input).call(
+                    &socket,
+                    Patience::Progress(self.admission.deadline),
+                    capacity,
+                    |response| {
+                        self.subscriptions
+                            .answer(&mut carried, stream, &self.admission, || {
+                                let output = self.translator.meta_answered(response)?;
+                                Ok(Self::text(Lane::MetaText, &output))
+                            })
+                    },
+                );
+                self.subscriptions.withdraw(carried);
+                followed
+            }
+        }
     }
 
     /// Restores the paired Nexus's emission and answers it with what the
     /// translator observed doing it.
     fn emission(&self, payload: Vec<u8>) -> Result<Frame, TranslatorError> {
         let emission = T::Emission::restored(payload)?;
-        let Some(ready) = self.translator.ready() else {
-            return Err(TranslatorError::Signal(
-                Refusal::AwaitingSettings.to_string(),
-            ));
-        };
+        let ready = self
+            .translator
+            .ready()
+            .ok_or(TranslatorError::Refused(Refusal::AwaitingSettings))?;
         let outcome = self
             .translator
             .emitted(&ready, emission)
@@ -205,6 +218,29 @@ where
             kind: Kind::Answered,
             payload: outcome.bytes().to_vec(),
         })
+    }
+
+    /// Ends a text answer: `Ended` after its last answer, or `Failed`
+    /// carrying what ended it.
+    fn end(
+        &self,
+        stream: &UnixStream,
+        lane: Lane,
+        answered: Result<(), TranslatorError>,
+    ) -> Result<(), TranslatorError> {
+        let ending = match answered {
+            Ok(()) => Frame {
+                lane,
+                kind: Kind::Ended,
+                payload: Vec::new(),
+            },
+            Err(error) => Frame {
+                lane,
+                kind: Kind::Failed,
+                payload: error.to_string().into_bytes(),
+            },
+        };
+        self.write(stream, &ending)
     }
 
     /// An answer on a text lane: the value as its canonical text.

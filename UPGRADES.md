@@ -1,5 +1,59 @@
 # Upgrades
 
+## translator-client 0.2.0 and translator-serving 0.2.0 — every exchange ends, a CLI takes its datom alone, one Nexus bootstrap
+
+Both take the nexus crates at 0.2.0 (`fb3441f952ecba19dd3e9f288a39e7275f8ae700`),
+where every exchange ends with `Delivery::End` and the lane `Kind` gains
+`Ended`. `translator` stays 0.5.3 here, and a consumer keeps 0.5.2
+(`29601a3`). The flake moves onto build-base `bab0819`, which registers the
+nexus crates at 0.2.0.
+
+**Every exchange ends.** `NexusCalling::ask` and `NexusCalling::follow`
+become one `NexusCalling::call(socket, patience, capacity, answered)`, which
+hands each answer on until the Nexus ends the exchange
+(`nexus_querying::ExchangeFollowing`). The translator writes each text
+answer back and then `Ended`, or `Failed` with the refusal or failure that
+ended it; a Nexus that closes before the end is a failure. `Answers` and
+`PublicTranslating::answers` are gone: the translator no longer knows which
+answer is a frame. `translator-client` reads until `Ended` or `Failed`, and a
+connection closed before either is a broken lane, not the end.
+
+**A CLI takes its datom alone.** `TextInvocation::from_arguments::<Nexus>(lane,
+args, &configuration)` reads `'<datom>'` alone and places the lane in the
+place the configuration names; `TextCommand::run::<Nexus>(lane, args)` is a
+CLI's whole `main`, an `ExitCode`. The configuration is
+`ConfigurationFile::of_process::<Nexus>()`,
+`<configuration home>/nexus/<nexus-name>.datom`, holding
+`ClientConfiguration.{ PlaceName }` (`crates/client/ethos/client.ethos`), `{
+<place-name> }`; `ConfigurationRefusal.[ Unlocated Missing Unreadable Invalid
+]`, printed as its datom naming the file, exits 2 (`RefusalReporting::EXIT`),
+as a usage refusal does, and nothing is sent. The invocation is compiled in
+under `datom`, which now turns on `shared-translator/datom`.
+
+**One Nexus bootstrap.** `PairLaunching` is gone: `PairRunning::launch`
+takes no type parameter and writes the Nexus `nexus_serving::NexusBootstrap`
+(re-exported, with `InstanceId`), its place, admission, the translator's
+identity and a fresh `InstanceId` (`FreshInstance`, sixteen bytes of the
+kernel's randomness as thirty-two hexadecimal digits). The translator's
+`TranslatorBootstrap` carries the text limits its own text budget starts at.
+
+**The translator's settings in forwarded readouts.**
+`MetaTranslating::meta_answered` takes `&self`, so the translator merges its
+own settings into a forwarded readout; `MetaTranslating::announced(&self,
+answered)` names the frame its own answer is carried into every open
+subscription as. `Settling` gains `Subscribed(Forwarded)`: forwarded as a
+subscription of the Nexus's, followed while the Nexus keeps it open, each
+answer of it written under one lock with the translator's announcements
+(`MetaSubscriptions`, a new field of `Connection`). `TranslatorError` gains
+`Refused(Refusal)`, whose text is the refusal's.
+
+To adopt: repin both crates and the nexus crates to 0.2.0 together; drop
+`answers`; give `meta_answered` `&self` and write `announced`; settle a
+subscription as `Settling::Subscribed`; drop `PairLaunching` and read the
+Nexus's bootstrap as `NexusBootstrap`; give `Connection` its
+`subscriptions`; make a CLI's `main` `TextInvocation::run`, turning on
+`translator-client/datom`, and write each CLI's place into its configuration.
+
 ## translator-client 0.1.1 and translator-serving 0.1.1 — the socket path is the exchange's
 
 `TranslatorPlacing::at` takes the translator's socket path from

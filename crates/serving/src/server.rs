@@ -11,6 +11,7 @@ use crate::budget::ValidTextBudget;
 use crate::connection::{Connection, ConnectionServing};
 use crate::error::TranslatorError;
 use crate::generated::{Endpoint, TranslatorBootstrap};
+use crate::subscriptions::MetaSubscriptions;
 use crate::translating::{EmissionAnswering, MetaTranslating, PublicTranslating, Translator};
 
 pub trait TranslatorServing {
@@ -41,6 +42,7 @@ where
             admission,
             bootstrap_budget,
             nexus: Arc::new(nexus),
+            subscriptions: Arc::new(MetaSubscriptions::default()),
         };
         let meta_listening = listening.clone();
         std::thread::spawn(move || {
@@ -61,6 +63,7 @@ struct Listening<T> {
     admission: ValidAdmission,
     bootstrap_budget: ValidTextBudget,
     nexus: Arc<PairedPeer>,
+    subscriptions: Arc<MetaSubscriptions>,
 }
 
 impl<T> Clone for Listening<T> {
@@ -71,6 +74,7 @@ impl<T> Clone for Listening<T> {
             admission: self.admission,
             bootstrap_budget: self.bootstrap_budget,
             nexus: Arc::clone(&self.nexus),
+            subscriptions: Arc::clone(&self.subscriptions),
         }
     }
 }
@@ -97,6 +101,7 @@ where
                     admission: listening.admission,
                     bootstrap_budget: listening.bootstrap_budget,
                     nexus: Some(listening.nexus.as_ref()),
+                    subscriptions: listening.subscriptions.as_ref(),
                 };
                 if let Err(error) = connection.serve(&mut stream) {
                     let title = <T as Translator>::Component::title().0;

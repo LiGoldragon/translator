@@ -1,5 +1,13 @@
 Library
-[]                                                     ; imports
-[ TextLane.[ PublicText MetaText ] ]                   ; types
+[ shared_translator:[ PlaceName ] ]                    ; imports
+[ TextLane.[ PublicText MetaText ]                     ; types
+  ClientConfiguration.{ PlaceName }                    ; <configuration home>/nexus/<nexus-name>.datom
+  ConfigurationPath.String
+  Reason.String
+  ConfigurationFault.{ ConfigurationPath Reason }
+  ConfigurationRefusal.[ Unlocated.Reason              ; no configuration home to look in
+                         Missing.ConfigurationPath
+                         Unreadable.ConfigurationFault
+                         Invalid.ConfigurationFault ] ]
 []                                                     ; traits
 []                                                     ; associations

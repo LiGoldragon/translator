@@ -8,6 +8,7 @@ use nexus_exchange::{
     Admission, FrameCapacityBytes, FrameDeadlineMilliseconds, RetryDelayMilliseconds,
     ValidAdmission,
 };
+use nexus_serving::{InstanceId, NexusBootstrap};
 use nix::sys::signal::{Signal as ProcessSignal, kill};
 use nix::sys::wait::waitpid;
 use nix::unistd::{Pid, Uid};
@@ -23,6 +24,7 @@ use crate::generated::{
     DepthLimit, NexusExecutable, NodeLimit, Pairing, TextLimits, TranslatorBootstrap,
     TranslatorExecutable,
 };
+use crate::instance::FreshInstance;
 
 type Failure = Box<dyn std::error::Error>;
 
@@ -87,29 +89,19 @@ impl<A: Iterator<Item = String>> IntegerArguments for A {
     }
 }
 
-/// What a Nexus is started with, written by its translator's crate.
-pub trait PairLaunching {
-    /// The frame the Nexus reads from its standard input.
-    type NexusBootstrap: Signalizable;
-
-    /// The Nexus's bootstrap for the pairing, naming its paired translator.
-    fn nexus_bootstrap(
-        pairing: &Pairing,
-        translator: PeerIdentity,
-    ) -> Result<Self::NexusBootstrap, Failure>;
-}
-
 pub trait PairRunning {
     /// Prepares the place, starts the Nexus and the translator, and writes
-    /// each its bootstrap naming the other's process, so each pins the other.
+    /// each its bootstrap naming the other's process, so each pins the other:
+    /// the Nexus's [`NexusBootstrap`] with a fresh [`InstanceId`] for this
+    /// run, the translator's with the text limits it starts with.
     /// It then waits: when either process ends, the other is stopped, and the
     /// launch ends in an error naming the one that ended. It never returns
     /// otherwise.
-    fn launch<Launcher: PairLaunching>(self) -> Result<std::convert::Infallible, Failure>;
+    fn launch(self) -> Result<std::convert::Infallible, Failure>;
 }
 
 impl PairRunning for Pairing {
-    fn launch<Launcher: PairLaunching>(self) -> Result<std::convert::Infallible, Failure> {
+    fn launch(self) -> Result<std::convert::Infallible, Failure> {
         let place = &self.place;
         validate_place_name(&place.place_name.0)?;
         place.prepare_for_start()?;
@@ -137,14 +129,15 @@ impl PairRunning for Pairing {
         let nexus_process = ProcessId(i64::from(nexus.id()));
         let translator_process = ProcessId(i64::from(translator.id()));
         let bootstrapped = (|| -> Result<(), Failure> {
-            let nexus_bootstrap = Launcher::nexus_bootstrap(
-                &self,
-                PeerIdentity {
+            nexus.bootstrap(&NexusBootstrap {
+                place: self.place.clone(),
+                admission: self.admission.clone(),
+                peer_identity: PeerIdentity {
                     user_id,
                     process_id: translator_process,
                 },
-            )?;
-            nexus.bootstrap(&nexus_bootstrap)?;
+                instance_id: InstanceId::fresh()?,
+            })?;
             translator.bootstrap(&TranslatorBootstrap {
                 place: self.place.clone(),
                 admission: self.admission.clone(),
