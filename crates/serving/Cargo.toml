@@ -1,6 +1,6 @@
 [package]
 name = "translator-serving"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
@@ -18,18 +18,29 @@ text = ["datom", "shared-translator/text"]
 
 [dependencies]
 datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", optional = true }
-nexus-exchange = { git = "https://github.com/LiGoldragon/nexus", rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700", default-features = false }
-nexus-querying = { git = "https://github.com/LiGoldragon/nexus", rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700", default-features = false }
-nexus-serving = { git = "https://github.com/LiGoldragon/nexus", rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700", default-features = false }
+nexus-exchange = { git = "https://github.com/LiGoldragon/nexus", rev = "a4bc0113c10c34ec9d92cde2d650eca9324144db", default-features = false }
+nexus-querying = { git = "https://github.com/LiGoldragon/nexus", rev = "a4bc0113c10c34ec9d92cde2d650eca9324144db", default-features = false }
+nexus-serving = { git = "https://github.com/LiGoldragon/nexus", rev = "a4bc0113c10c34ec9d92cde2d650eca9324144db", default-features = false }
 nix = { version = "0.30", features = ["fs", "poll", "process", "signal", "socket", "user"] }
 protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598", optional = true }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
-rustix = { version = "1", features = ["rand"] }
+rustix = { version = "1", features = ["process", "rand"] }
 shared-translator = { package = "translator", git = "https://github.com/LiGoldragon/translator", rev = "29601a3", default-features = false, features = ["unix"] }
 signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false }
+tokio = { version = "1.53.1", default-features = false, features = ["macros", "net", "rt", "signal"] }
 
 [dev-dependencies]
-translator-client = { path = "../client", version = "0.2.0" }
+futures-channel = { version = "0.3.34", default-features = false, features = ["std"] }
+futures-util = { version = "0.3.34", default-features = false }
+tokio = { version = "1.53.1", default-features = false, features = ["macros", "net", "rt", "rt-multi-thread", "signal"] }
+translator-client = { path = "../client", version = "0.3.0" }
+
+# The pair launcher's test is its own launcher: its main launches a pair when
+# asked to, and otherwise runs each case against a launcher of itself.
+[[test]]
+name = "launcher"
+harness = false
+required-features = ["text"]
 
 [lints.rust]
 unsafe_code = "forbid"

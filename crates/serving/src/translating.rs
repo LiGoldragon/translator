@@ -73,7 +73,9 @@ pub trait MetaTranslating: Translator {
 
     /// The meta answer a response of the Nexus's carries, the translator's
     /// own settings as they stand merged into it where it reads out the
-    /// configuration, or the failure the Nexus answered with.
+    /// configuration, or the failure the Nexus answered with. Readiness is
+    /// the pair's: a readout names the translator's settings still awaited
+    /// first, then the Nexus's, and is ready only when both are.
     fn meta_answered(&self, response: Self::MetaResponse)
     -> Result<Self::MetaOutput, NexusFailure>;
 

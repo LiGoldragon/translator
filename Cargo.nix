@@ -856,13 +856,13 @@ rec {
       };
       "nexus-exchange" = rec {
         crateName = "nexus-exchange";
-        version = "0.2.0";
+        version = "0.3.0";
         edition = "2024";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700";
-          sha256 = "13dkff8q4wvsqq9i4hg0m1w1c4qw3xlr9wyv3x8dlzvpx18xdvzs";
+          rev = "a4bc0113c10c34ec9d92cde2d650eca9324144db";
+          sha256 = "0cp7b8w7jabk6hklliklaszmbjvkf84mkn4v946n9955bpqbac35";
         };
         libName = "nexus_exchange";
         dependencies = [
@@ -902,13 +902,13 @@ rec {
       };
       "nexus-querying" = rec {
         crateName = "nexus-querying";
-        version = "0.2.0";
+        version = "0.3.0";
         edition = "2024";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700";
-          sha256 = "13dkff8q4wvsqq9i4hg0m1w1c4qw3xlr9wyv3x8dlzvpx18xdvzs";
+          rev = "a4bc0113c10c34ec9d92cde2d650eca9324144db";
+          sha256 = "0cp7b8w7jabk6hklliklaszmbjvkf84mkn4v946n9955bpqbac35";
         };
         libName = "nexus_querying";
         dependencies = [
@@ -932,13 +932,13 @@ rec {
       };
       "nexus-serving" = rec {
         crateName = "nexus-serving";
-        version = "0.2.0";
+        version = "0.3.0";
         edition = "2024";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700";
-          sha256 = "13dkff8q4wvsqq9i4hg0m1w1c4qw3xlr9wyv3x8dlzvpx18xdvzs";
+          rev = "a4bc0113c10c34ec9d92cde2d650eca9324144db";
+          sha256 = "0cp7b8w7jabk6hklliklaszmbjvkf84mkn4v946n9955bpqbac35";
         };
         libName = "nexus_serving";
         dependencies = [
@@ -1931,7 +1931,7 @@ rec {
           "tracing" = [ "dep:tracing" ];
           "windows-sys" = [ "dep:windows-sys" ];
         };
-        resolvedDefaultFeatures = [ "bytes" "io-util" "libc" "macros" "mio" "net" "rt" "signal" "signal-hook-registry" "socket2" "sync" "time" "tokio-macros" "tracing" "windows-sys" ];
+        resolvedDefaultFeatures = [ "bytes" "io-util" "libc" "macros" "mio" "net" "rt" "rt-multi-thread" "signal" "signal-hook-registry" "socket2" "sync" "time" "tokio-macros" "tracing" "windows-sys" ];
       };
       "tokio-macros" = rec {
         crateName = "tokio-macros";
@@ -2126,7 +2126,7 @@ rec {
       };
       "translator-client" = rec {
         crateName = "translator-client";
-        version = "0.2.0";
+        version = "0.3.0";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./crates/client; };
         libName = "translator_client";
@@ -2172,7 +2172,7 @@ rec {
       };
       "translator-serving" = rec {
         crateName = "translator-serving";
-        version = "0.2.0";
+        version = "0.3.0";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./crates/serving; };
         libName = "translator_serving";
@@ -2216,12 +2216,18 @@ rec {
           {
             name = "rustix";
             packageId = "rustix";
-            features = [ "rand" ];
+            features = [ "process" "rand" ];
           }
           {
             name = "signal";
             packageId = "signal";
             usesDefaultFeatures = false;
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            usesDefaultFeatures = false;
+            features = [ "macros" "net" "rt" "signal" ];
           }
           {
             name = "translator";
@@ -2232,6 +2238,23 @@ rec {
           }
         ];
         devDependencies = [
+          {
+            name = "futures-channel";
+            packageId = "futures-channel";
+            usesDefaultFeatures = false;
+            features = [ "std" ];
+          }
+          {
+            name = "futures-util";
+            packageId = "futures-util";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            usesDefaultFeatures = false;
+            features = [ "macros" "net" "rt" "rt-multi-thread" "signal" ];
+          }
           {
             name = "translator-client";
             packageId = "translator-client";

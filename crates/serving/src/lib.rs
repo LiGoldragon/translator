@@ -20,7 +20,10 @@
 //! Nexus and its translator and hands each a bootstrap frame naming the
 //! other: the Nexus its [`NexusBootstrap`], with a fresh [`InstanceId`], and
 //! the translator its [`TranslatorBootstrap`], with the text limits its
-//! budget starts at, which the launcher takes from its configuration.
+//! budget starts at, which the launcher takes from its configuration. It
+//! then waits on events, tokio's signal streams for SIGTERM and SIGINT and a
+//! pidfd for each child, and ends both children when it is told to end or
+//! when either ends.
 //!
 //! The lanes, the traits and the pair launcher read and write text, so they
 //! are compiled in only under the `text` feature, which a translator turns on.

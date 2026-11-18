@@ -1,5 +1,40 @@
 # Upgrades
 
+## translator-client 0.3.0 and translator-serving 0.3.0 — a meta subscription stays open, the launcher ends its pair when told to
+
+Both take the nexus crates at 0.3.0 (`a4bc0113c10c34ec9d92cde2d650eca9324144db`),
+whose meta socket serves a stream: a meta Subscribe of the configuration
+stays open after its `Opened` frame and carries each change the Nexus makes.
+`Settling::Subscribed` follows it as before, and the translator's own setting
+changes, announced through `MetaSubscriptions`, now reach an open
+subscription. `translator` stays 0.5.3 here, and a consumer keeps 0.5.2
+(`29601a3`). The flake moves onto build-base `dc7c8e7`, which registers the
+nexus crates at 0.3.0. `translator-client` changes no code; it moves with the
+nexus crates.
+
+**Readiness is the pair's.** `MetaTranslating::meta_answered` names the
+translator's settings still awaited first in the Nexus's readiness, then the
+Nexus's, ready only when both are, as Capsule's translator does. The pair
+test (`crates/serving/tests/pair.rs`) serves a Nexus on `nexus-serving`'s
+meta socket and a translator on this crate in one process, and shows a
+change by either reaching an open meta subscription.
+
+**The launcher ends its pair when told to.** `PairRunning::launch` catches
+SIGTERM and SIGINT with tokio's signal streams, on a current-thread runtime
+of its own, before it starts either child, and holds a pidfd for each child,
+read through tokio's `AsyncFd`; it waits for the first of the four events,
+with no timer. Told to end, it stops both children, waits for each and ends
+in an error naming the signal, `launcher told to end: SIGTERM`; when either
+child ends, it stops the other, as before, `paired process ended: the Nexus
+<pid>` or `… the translator <pid>`. A caught signal is reset at exec, so each
+child starts with SIGTERM and SIGINT at their defaults and unblocked.
+`translator-serving` takes tokio (`macros`, `net`, `rt`, `signal`).
+`tests/launcher.rs` is its own launcher and checks each case.
+
+To adopt: repin both crates and the nexus crates to 0.3.0 together; move a
+Nexus's meta socket onto `accept_meta` and `MetaConnection::serve` (see the
+nexus crates' 0.3.0); merge readiness as above.
+
 ## translator-client 0.2.0 and translator-serving 0.2.0 — every exchange ends, a CLI takes its datom alone, one Nexus bootstrap
 
 Both take the nexus crates at 0.2.0 (`fb3441f952ecba19dd3e9f288a39e7275f8ae700`),

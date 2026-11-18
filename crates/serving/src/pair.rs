@@ -1,7 +1,14 @@
 //! The pair launcher: a Nexus and its translator, started together, each
 //! naming the other, and ended together.
+//!
+//! The launcher waits on events alone, on a runtime of its own: tokio's
+//! signal streams carry SIGTERM and SIGINT, read through handlers that every
+//! child loses at exec, and a pidfd for each child becomes readable when that
+//! child ends. The waiting is hand-written: it holds signal streams and file
+//! descriptors, which Ethos cannot name.
 
 use std::io::Write;
+use std::os::fd::{AsFd, OwnedFd};
 use std::process::{Child, Command, Stdio};
 
 use nexus_exchange::{
@@ -10,7 +17,6 @@ use nexus_exchange::{
 };
 use nexus_serving::{InstanceId, NexusBootstrap};
 use nix::sys::signal::{Signal as ProcessSignal, kill};
-use nix::sys::wait::waitpid;
 use nix::unistd::{Pid, Uid};
 use shared_translator::placement::{
     Place, Preparable, runtime_path, state_path, validate_place_name,
@@ -18,6 +24,9 @@ use shared_translator::placement::{
 use shared_translator::{
     FrameCapacity, FrameWriting, PeerIdentity, ProcessId, Signalizable, UserId,
 };
+use tokio::io::Interest;
+use tokio::io::unix::AsyncFd;
+use tokio::signal::unix::{Signal as SignalStream, SignalKind, signal};
 
 use crate::budget::{Budgeting, ValidTextBudget};
 use crate::generated::{
@@ -95,8 +104,13 @@ pub trait PairRunning {
     /// the Nexus's [`NexusBootstrap`] with a fresh [`InstanceId`] for this
     /// run, the translator's with the text limits it starts with.
     /// It then waits: when either process ends, the other is stopped, and the
-    /// launch ends in an error naming the one that ended. It never returns
-    /// otherwise.
+    /// launch ends in an error naming the one that ended; when the launcher
+    /// is told to end, by SIGTERM or SIGINT, both are stopped, and the launch
+    /// ends in an error naming the signal. It never returns otherwise.
+    ///
+    /// SIGTERM and SIGINT are caught from before either child starts, so a
+    /// signal at any moment after is read; each child starts with neither
+    /// caught nor blocked, since exec resets a caught signal.
     fn launch(self) -> Result<std::convert::Infallible, Failure>;
 }
 
@@ -112,6 +126,10 @@ impl PairRunning for Pairing {
             return Err(format!("metaflow state does not exist: {}", place.state.0).into());
         }
 
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .build()?;
+        let told = Told::listen(&runtime)?;
         let mut nexus = Command::new(&self.nexus_executable.0)
             .stdin(Stdio::piped())
             .spawn()?;
@@ -154,17 +172,59 @@ impl PairRunning for Pairing {
             return Err(error);
         }
 
-        let nexus = nexus.pid();
-        let translator = translator.pid();
-        let ended = waitpid(Pid::from_raw(-1), None)?;
-        let survivor = if ended.pid() == Some(nexus) {
-            translator
-        } else {
-            nexus
-        };
-        let _ = kill(survivor, ProcessSignal::SIGTERM);
-        let _ = waitpid(survivor, None);
-        Err(format!("paired process ended: {ended:?}").into())
+        let ending = (|| -> Result<Ending, Failure> {
+            let nexus_ended = nexus.ended()?;
+            let translator_ended = translator.ended()?;
+            runtime.block_on(told.awaited(&nexus_ended, &translator_ended))
+        })();
+        nexus.stop();
+        translator.stop();
+        match ending? {
+            Ending::Told(signal) => Err(format!("launcher told to end: {signal}").into()),
+            Ending::Nexus => Err(format!("paired process ended: the Nexus {}", nexus.id()).into()),
+            Ending::Translator => {
+                Err(format!("paired process ended: the translator {}", translator.id()).into())
+            }
+        }
+    }
+}
+
+/// What ended the pair's run.
+enum Ending {
+    /// The launcher was told to end, by this signal.
+    Told(ProcessSignal),
+    Nexus,
+    Translator,
+}
+
+/// The signals that tell the launcher to end, read as events.
+struct Told {
+    terminate: SignalStream,
+    interrupt: SignalStream,
+}
+
+impl Told {
+    /// Catches SIGTERM and SIGINT on the launcher's runtime, before any child
+    /// starts.
+    fn listen(runtime: &tokio::runtime::Runtime) -> Result<Self, Failure> {
+        let _entered = runtime.enter();
+        Ok(Self {
+            terminate: signal(SignalKind::terminate())?,
+            interrupt: signal(SignalKind::interrupt())?,
+        })
+    }
+
+    /// Waits for the first event: a signal caught, or a child's pidfd
+    /// readable once it ends.
+    async fn awaited(mut self, nexus: &OwnedFd, translator: &OwnedFd) -> Result<Ending, Failure> {
+        let nexus = AsyncFd::with_interest(nexus.as_fd(), Interest::READABLE)?;
+        let translator = AsyncFd::with_interest(translator.as_fd(), Interest::READABLE)?;
+        tokio::select! {
+            _ = self.terminate.recv() => Ok(Ending::Told(ProcessSignal::SIGTERM)),
+            _ = self.interrupt.recv() => Ok(Ending::Told(ProcessSignal::SIGINT)),
+            ended = nexus.readable() => ended.map(|_| Ending::Nexus).map_err(Into::into),
+            ended = translator.readable() => ended.map(|_| Ending::Translator).map_err(Into::into),
+        }
     }
 }
 
@@ -176,7 +236,10 @@ trait Paired {
 
     fn pid(&self) -> Pid;
 
-    /// Asks the process to end, and waits for it.
+    /// A pidfd that becomes readable when the process ends.
+    fn ended(&self) -> Result<OwnedFd, Failure>;
+
+    /// Asks the process to end, unless it has, and waits for it.
     fn stop(&mut self);
 }
 
@@ -195,9 +258,18 @@ impl Paired for Child {
         Pid::from_raw(i32::try_from(self.id()).expect("child pid fits i32"))
     }
 
+    fn ended(&self) -> Result<OwnedFd, Failure> {
+        Ok(rustix::process::pidfd_open(
+            rustix::process::Pid::from_child(self),
+            rustix::process::PidfdFlags::empty(),
+        )?)
+    }
+
     fn stop(&mut self) {
-        let pid = self.pid();
-        let _ = kill(pid, ProcessSignal::SIGTERM);
-        let _ = waitpid(pid, None);
+        if let Ok(Some(_)) = self.try_wait() {
+            return;
+        }
+        let _ = kill(self.pid(), ProcessSignal::SIGTERM);
+        let _ = self.wait();
     }
 }

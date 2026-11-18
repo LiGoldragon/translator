@@ -1,6 +1,6 @@
 [package]
 name = "translator-client"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
@@ -14,7 +14,7 @@ datom = ["dep:datom-codec", "dep:protos", "nexus-exchange/datom", "shared-transl
 
 [dependencies]
 datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", optional = true }
-nexus-exchange = { git = "https://github.com/LiGoldragon/nexus", rev = "fb3441f952ecba19dd3e9f288a39e7275f8ae700", default-features = false }
+nexus-exchange = { git = "https://github.com/LiGoldragon/nexus", rev = "a4bc0113c10c34ec9d92cde2d650eca9324144db", default-features = false }
 protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598", optional = true }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false }
