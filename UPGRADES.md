@@ -1,5 +1,47 @@
 # Upgrades
 
+## 0.7.0 — a socket is awaited on an event, the accept retry is gone
+
+Every wait in the shared lane answers an event. 0.6.0 is taken by an
+unlanded branch, so this release is 0.7.0.
+
+**A socket is awaited on the kernel's word.** `unix::SocketAwaiting`,
+implemented for `Path`, is the one way a translator waits for a socket to be
+there:
+
+```rust
+pub trait SocketAwaiting {
+    fn connect_when_present(&self, deadline: Instant) -> Result<UnixStream, AwaitRefusal>;
+}
+```
+
+It watches the socket's directory with inotify (the `notify` crate, as the
+Codex Harness watches its sessions directories), or, while that directory is
+not there, its nearest existing ancestor, moving down at each creation; it
+looks once the watch is placed and again at each word of the kernel, and
+connects once when the socket is there. The deadline bounds the wait and is
+no clock: `AwaitRefusal` (declared in `awaiting.ethos`) is `Elapsed` when it
+passes first, `Unwatchable.SocketFault` for a directory there that cannot be
+watched, and `Unconnected.SocketFault` for a socket there that refuses the
+connection.
+
+**A socket appears only once it listens.** `unix::AppearingBinding::bind_appearing`,
+for `Path`, binds and listens under a name of the process's own beside the
+path, then renames the socket onto the path with `RENAME_NOREPLACE`, so a
+path already there is refused as binding refused it. A peer that waits for
+the path therefore connects once and is accepted.
+
+**The admission counts connections.** `unix::Admission::new(deadline,
+frame_capacity, connection_capacity)` takes the connection capacity, a
+positive count, in place of the retry delay, and `AdmissionAccess` reads it
+as `connection_capacity()`. `accept_with_retry` and `accept_with_retry_using`
+are gone: an accept waits on a connection ending, in `nexus-exchange` 0.4.0.
+
+To adopt: take the `unix` feature at this revision (it brings `notify`
+8.2.0); replace a connect-retry loop with `connect_when_present`, bounded by
+the admission deadline; bind a socket a peer waits for with
+`bind_appearing`; build `Admission` with a connection capacity.
+
 ## translator-client 0.3.0 and translator-serving 0.3.0 — a meta subscription stays open, the launcher ends its pair when told to
 
 Both take the nexus crates at 0.3.0 (`a4bc0113c10c34ec9d92cde2d650eca9324144db`),

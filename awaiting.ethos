@@ -1,0 +1,8 @@
+Library
+[]                                                    ; imports
+[ SocketFault.String                                  ; types
+  AwaitRefusal.[ Unwatchable.SocketFault              ; the directory it is awaited in, or the nearest one there, cannot be watched
+                 Elapsed                              ; the deadline passed before it was there
+                 Unconnected.SocketFault ] ]          ; it was there and refused the one connection
+[]                                                    ; traits
+[]                                                    ; associations

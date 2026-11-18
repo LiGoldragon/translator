@@ -25,9 +25,12 @@ with both paths. Legacy runtime directories are ephemeral and remain untouched.
 
 The optional `unix` feature supplies policy-free Unix transport mechanics:
 absolute progress deadlines, idle-before-first-byte framing, complete-submit
-witnesses, kernel peer credentials and pidfd liveness, validated admission,
-and classified accept retry. Component socket names, lanes, query routing and
-domain configuration remain in each Nexus.
+witnesses, kernel peer credentials and pidfd liveness, validated admission
+(its frame deadline, frame capacity and connection capacity), a socket bound
+so its path appears only once it listens (`AppearingBinding`), and a socket
+awaited on the kernel's word that it was made and then connected to once
+(`SocketAwaiting`), the deadline only bounding the wait. Component socket
+names, lanes, query routing and domain configuration remain in each Nexus.
 
 ## The text lanes and the pair launcher every translator shares
 

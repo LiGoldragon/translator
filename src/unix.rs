@@ -3,7 +3,15 @@
 use crate::{Caller, GroupId, PeerIdentity, ProcessId, UserId};
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
+
+use notify::{RecursiveMode, Watcher as _};
+
+pub use crate::awaiting::{AwaitRefusal, SocketFault};
 
 pub const HEADER_BYTES: usize = 2;
 
@@ -238,61 +246,134 @@ mod tests {
     }
 }
 
+/// The admission both processes of a Nexus are bounded by: the deadline
+/// every frame is read and written within, the largest frame admitted, and
+/// how many connections a listener holds open at once.
 #[derive(Clone, Copy, Debug)]
 pub struct Admission {
     deadline: Duration,
     frame_capacity: usize,
-    retry_delay: Duration,
+    connection_capacity: usize,
 }
 
 pub trait AdmissionAccess {
     fn deadline(&self) -> Duration;
     fn frame_capacity(&self) -> usize;
-    fn retry_delay(&self) -> Duration;
+    fn connection_capacity(&self) -> usize;
 }
 
 impl AdmissionAccess for Admission {
     fn deadline(&self) -> Duration { self.deadline }
     fn frame_capacity(&self) -> usize { self.frame_capacity }
-    fn retry_delay(&self) -> Duration { self.retry_delay }
+    fn connection_capacity(&self) -> usize { self.connection_capacity }
 }
 
 impl Admission {
-    pub fn new(deadline: Duration, frame_capacity: usize, retry_delay: Duration) -> Result<Self, &'static str> {
+    pub fn new(deadline: Duration, frame_capacity: usize, connection_capacity: usize) -> Result<Self, &'static str> {
         if deadline.is_zero() || Instant::now().checked_add(deadline).is_none() {
             return Err("frame deadline must be positive and representable");
         }
         validate_limit(frame_capacity).map_err(|_| "frame capacity is outside the shared wire bound")?;
-        if retry_delay.is_zero() || Instant::now().checked_add(retry_delay).is_none() {
-            return Err("retry delay must be positive and representable");
+        if connection_capacity == 0 {
+            return Err("connection capacity must be positive");
         }
-        Ok(Self { deadline, frame_capacity, retry_delay })
+        Ok(Self { deadline, frame_capacity, connection_capacity })
     }
 }
 
-fn recoverable_accept(error: &std::io::Error) -> bool {
-    matches!(error.kind(), std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::ConnectionAborted)
-        || matches!(error.raw_os_error(), Some(libc::EMFILE) | Some(libc::ENFILE) | Some(libc::ENOBUFS) | Some(libc::ENOMEM))
+/// A listening socket whose path appears only once it listens, so a peer
+/// that waits for the path connects once and is accepted.
+pub trait AppearingBinding {
+    /// Binds and listens under a name of this process's own beside the path,
+    /// then renames the socket onto the path, which must not be there. The
+    /// path's appearance is the event a peer waits on.
+    fn bind_appearing(&self) -> std::io::Result<UnixListener>;
 }
 
-pub fn accept_with_retry(
-    listener: &std::os::unix::net::UnixListener,
-    retry_delay: Duration,
-) -> std::io::Result<(std::os::unix::net::UnixStream, std::os::unix::net::SocketAddr)> {
-    accept_with_retry_using(|| listener.accept(), std::thread::sleep, retry_delay)
-}
-
-pub fn accept_with_retry_using<T>(
-    mut accept: impl FnMut() -> std::io::Result<T>,
-    mut wait: impl FnMut(Duration),
-    retry_delay: Duration,
-) -> std::io::Result<T> {
-    loop {
-        match accept() {
-            Ok(value) => return Ok(value),
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) if recoverable_accept(&error) => { wait(retry_delay); }
+impl AppearingBinding for Path {
+    fn bind_appearing(&self) -> std::io::Result<UnixListener> {
+        static STAGED: AtomicU64 = AtomicU64::new(0);
+        let directory = self.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let drawn = STAGED.fetch_add(1, Ordering::Relaxed);
+        let staged = directory.join(format!(".{}-{drawn}", std::process::id()));
+        match std::fs::remove_file(&staged) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
+        let listener = UnixListener::bind(&staged)?;
+        let renamed = rustix::fs::renameat_with(rustix::fs::CWD, &staged, rustix::fs::CWD, self, rustix::fs::RenameFlags::NOREPLACE);
+        if let Err(errno) = renamed {
+            let _ = std::fs::remove_file(&staged);
+            return Err(errno.into());
+        }
+        Ok(listener)
     }
+}
+
+/// A socket awaited at its path: the kernel's word that something was made
+/// wakes the wait, which then connects once. Nothing here keeps a clock: the
+/// deadline only bounds the wait.
+pub trait SocketAwaiting {
+    /// Connects once to the socket at this path as soon as it is there. The
+    /// watch rests on the path's directory, or, while that is not there, on
+    /// its nearest existing ancestor, and moves down at each creation. A
+    /// directory there that cannot be watched is refused `Unwatchable`; the
+    /// deadline passing first is `Elapsed`; a socket there that refuses the
+    /// connection is `Unconnected`.
+    fn connect_when_present(&self, deadline: Instant) -> Result<UnixStream, AwaitRefusal>;
+}
+
+impl SocketAwaiting for Path {
+    fn connect_when_present(&self, deadline: Instant) -> Result<UnixStream, AwaitRefusal> {
+        let directory = self.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let unwatchable = |place: &Path, error: &dyn std::fmt::Display| {
+            AwaitRefusal::Unwatchable(SocketFault(format!("{}: {error}", place.display())))
+        };
+        let (sender, words) = std::sync::mpsc::channel();
+        let mut watcher = notify::recommended_watcher(move |word: notify::Result<notify::Event>| {
+            let _ = sender.send(word);
+        })
+        .map_err(|error| unwatchable(directory, &error))?;
+        let mut resting: Option<PathBuf> = None;
+        loop {
+            let nearest = directory
+                .ancestors()
+                .find(|ancestor| ancestor.is_dir())
+                .ok_or_else(|| unwatchable(directory, &"no ancestor of it is there"))?
+                .to_path_buf();
+            if resting.as_ref() != Some(&nearest) {
+                match watcher.watch(&nearest, RecursiveMode::NonRecursive) {
+                    Ok(()) => {
+                        if let Some(previous) = resting.replace(nearest) {
+                            let _ = watcher.unwatch(&previous);
+                        }
+                    }
+                    // Gone between the look and the watch: look again.
+                    Err(error) if matches!(error.kind, notify::ErrorKind::PathNotFound) => continue,
+                    Err(error) => return Err(unwatchable(&nearest, &error)),
+                }
+            }
+            if std::fs::symlink_metadata(self).is_ok() {
+                return UnixStream::connect(self)
+                    .map_err(|error| AwaitRefusal::Unconnected(SocketFault(format!("{}: {error}", self.display()))));
+            }
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|remaining| !remaining.is_zero())
+                .ok_or(AwaitRefusal::Elapsed)?;
+            match words.recv_timeout(remaining) {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => return Err(unwatchable(&nearest_or(&resting, directory), &error)),
+                Err(RecvTimeoutError::Timeout) => return Err(AwaitRefusal::Elapsed),
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(unwatchable(&nearest_or(&resting, directory), &"the watch ended"))
+                }
+            }
+        }
+    }
+}
+
+fn nearest_or(resting: &Option<PathBuf>, directory: &Path) -> PathBuf {
+    resting.clone().unwrap_or_else(|| directory.to_path_buf())
 }

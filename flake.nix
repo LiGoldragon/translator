@@ -45,6 +45,7 @@
           test-default-placement = check "translator" [ "default" ];
           identity-generated = generated "identity" ./identity.ethos ./generated/identity.rs;
           placement-generated = generated "placement" ./placement.ethos ./generated/placement.rs;
+          awaiting-generated = generated "awaiting" ./awaiting.ethos ./generated/awaiting.rs;
           client-generated = generated "client" ./crates/client/ethos/client.ethos ./crates/client/src/generated/client.rs;
           serving-generated = generated "serving" ./crates/serving/ethos/serving.ethos ./crates/serving/src/generated/serving.rs;
           doc = doc "translator" [ "default" "datom" "text" "unix" ] [ "-D" "warnings" ];

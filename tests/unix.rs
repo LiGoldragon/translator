@@ -78,29 +78,93 @@ fn witnessed_submission_retries_an_interrupted_write() {
 }
 
 #[test]
-fn accept_retries_only_recoverable_failures() {
-    let mut attempts = 0;
-    let mut waits = Vec::new();
-    let value = accept_with_retry_using(
-        || { attempts += 1; if attempts == 1 { Err(std::io::Error::from_raw_os_error(libc::EMFILE)) } else { Ok(7) } },
-        |delay| waits.push(delay),
-        Duration::from_millis(3),
-    ).unwrap();
-    assert_eq!(value, 7);
-    assert_eq!(waits, [Duration::from_millis(3)]);
-    assert_eq!(accept_with_retry_using(|| Err::<(), _>(std::io::Error::from_raw_os_error(libc::EBADF)), |_| {}, Duration::from_millis(3)).unwrap_err().raw_os_error(), Some(libc::EBADF));
+fn admission_is_constructed_once_and_read_through_its_access_kind() {
+    let admission = Admission::new(Duration::from_millis(7), 64, 3).unwrap();
+    assert_eq!(admission.deadline(), Duration::from_millis(7));
+    assert_eq!(admission.frame_capacity(), 64);
+    assert_eq!(admission.connection_capacity(), 3);
+
+    assert!(Admission::new(Duration::ZERO, 64, 3).is_err());
+    assert!(Admission::new(Duration::from_millis(7), 1, 3).is_err());
+    assert!(Admission::new(Duration::from_millis(7), 64, 0).is_err());
+}
+
+/// A directory of its own for one test, under the test's temporary root.
+fn directory(name: &str) -> std::path::PathBuf {
+    let directory = std::env::temp_dir().join(format!("translator-unix-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    directory
 }
 
 #[test]
-fn admission_is_constructed_once_and_read_through_its_access_kind() {
-    let admission = Admission::new(Duration::from_millis(7), 64, Duration::from_millis(3)).unwrap();
-    assert_eq!(admission.deadline(), Duration::from_millis(7));
-    assert_eq!(admission.frame_capacity(), 64);
-    assert_eq!(admission.retry_delay(), Duration::from_millis(3));
+fn an_awaited_socket_is_connected_once_it_appears_in_a_directory_made_after_the_wait() {
+    let root = directory("appears");
+    let socket = root.join("place").join("nexus-meta.sock");
+    let binding = {
+        let socket = socket.clone();
+        std::thread::spawn(move || {
+            // The wait is placed first; the directory and the socket come after.
+            std::thread::sleep(Duration::from_millis(50));
+            std::fs::create_dir(socket.parent().unwrap()).unwrap();
+            let listener = socket.as_path().bind_appearing().unwrap();
+            let (mut accepted, _) = listener.accept().unwrap();
+            accepted.write_all(b"k").unwrap();
+        })
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut stream = socket.as_path().connect_when_present(deadline).expect("connected once it appeared");
+    let mut byte = [0_u8; 1];
+    std::io::Read::read_exact(&mut stream, &mut byte).unwrap();
+    assert_eq!(&byte, b"k");
+    binding.join().unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
 
-    assert!(Admission::new(Duration::ZERO, 64, Duration::from_millis(3)).is_err());
-    assert!(Admission::new(Duration::from_millis(7), 1, Duration::from_millis(3)).is_err());
-    assert!(Admission::new(Duration::from_millis(7), 64, Duration::ZERO).is_err());
+#[test]
+fn the_deadline_bounds_a_socket_that_never_appears() {
+    let root = directory("never");
+    let socket = root.join("nexus-meta.sock");
+    let began = std::time::Instant::now();
+    let refused = socket.as_path().connect_when_present(began + Duration::from_millis(60)).unwrap_err();
+    assert_eq!(refused, AwaitRefusal::Elapsed);
+    assert!(began.elapsed() >= Duration::from_millis(60));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_directory_that_cannot_be_watched_is_refused() {
+    // Root reads every directory, so only another login meets the refusal.
+    if rustix::process::geteuid().is_root() {
+        return;
+    }
+    let root = directory("unwatchable");
+    let closed = root.join("closed");
+    std::fs::create_dir(&closed).unwrap();
+    std::fs::set_permissions(&closed, std::os::unix::fs::PermissionsExt::from_mode(0o000)).unwrap();
+    let refused = closed
+        .join("nexus-meta.sock")
+        .as_path()
+        .connect_when_present(std::time::Instant::now() + Duration::from_secs(10))
+        .unwrap_err();
+    std::fs::set_permissions(&closed, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    assert!(matches!(refused, AwaitRefusal::Unwatchable(_)), "{refused:?}");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn an_appearing_socket_listens_at_its_path_and_refuses_one_already_there() {
+    let root = directory("binding");
+    let socket = root.join("nexus.sock");
+    let listener = socket.as_path().bind_appearing().unwrap();
+    let client = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+    let _ = listener.accept().unwrap();
+    drop(client);
+    assert!(socket.as_path().bind_appearing().is_err());
+    let left: Vec<_> = std::fs::read_dir(&root).unwrap().map(|entry| entry.unwrap().file_name()).collect();
+    assert_eq!(left, [std::ffi::OsString::from("nexus.sock")]);
+    drop(listener);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

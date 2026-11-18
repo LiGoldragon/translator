@@ -444,4 +444,9 @@ pub use identity::{
 pub use placement::{Place, PlaceName, PlacePreparationError, Preparable, Runtime, State};
 
 #[cfg(feature = "unix")]
+#[rustfmt::skip]
+#[path = "../generated/awaiting.rs"]
+mod awaiting;
+
+#[cfg(feature = "unix")]
 pub mod unix;
