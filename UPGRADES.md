@@ -1,5 +1,22 @@
 # Upgrades
 
+## translator-client 0.1.1 and translator-serving 0.1.1 — the socket path is the exchange's
+
+`TranslatorPlacing::at` takes the translator's socket path from
+`nexus_exchange::SocketPaths` (`translator` for the public text lane,
+`meta_translator` for the meta) and no longer computes it from the socket
+names and the place's runtime directory itself. The path is the same, and
+nothing a consumer calls changes. `translator-serving` changes no code: it
+names `SocketPaths` through `nexus-serving`'s re-export as before.
+
+Both take the nexus crates at 0.1.1 (`63a2d477ca194913c847d15f227637d84fbe9aeb`),
+so a consumer locks one revision of them. `translator` stays 0.5.3 here, and
+a consumer keeps 0.5.2 (`29601a3`). The flake moves onto build-base
+`88fec4b`, which registers the nexus crates at 0.1.1.
+
+To adopt: repin `translator-client` and `translator-serving` to this
+repository's revision and the nexus crates to `63a2d47`, together.
+
 ## 0.5.3, translator-client 0.1.0 and translator-serving 0.1.0 — what every translator does alike
 
 The repository becomes a workspace. `translator` moves to 0.5.3 with no change

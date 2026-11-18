@@ -267,8 +267,8 @@ dependencies = [
 
 [[package]]
 name = "nexus-exchange"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nexus?rev=8976179c940b4a822990f519515084cb62d3f908#8976179c940b4a822990f519515084cb62d3f908"
+version = "0.1.1"
+source = "git+https://github.com/LiGoldragon/nexus?rev=63a2d477ca194913c847d15f227637d84fbe9aeb#63a2d477ca194913c847d15f227637d84fbe9aeb"
 dependencies = [
  "datom-codec",
  "protos",
@@ -279,8 +279,8 @@ dependencies = [
 
 [[package]]
 name = "nexus-querying"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nexus?rev=8976179c940b4a822990f519515084cb62d3f908#8976179c940b4a822990f519515084cb62d3f908"
+version = "0.1.1"
+source = "git+https://github.com/LiGoldragon/nexus?rev=63a2d477ca194913c847d15f227637d84fbe9aeb#63a2d477ca194913c847d15f227637d84fbe9aeb"
 dependencies = [
  "nexus-exchange",
  "rkyv",
@@ -289,8 +289,8 @@ dependencies = [
 
 [[package]]
 name = "nexus-serving"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nexus?rev=8976179c940b4a822990f519515084cb62d3f908#8976179c940b4a822990f519515084cb62d3f908"
+version = "0.1.1"
+source = "git+https://github.com/LiGoldragon/nexus?rev=63a2d477ca194913c847d15f227637d84fbe9aeb#63a2d477ca194913c847d15f227637d84fbe9aeb"
 dependencies = [
  "futures-channel",
  "futures-util",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "translator-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "datom-codec",
  "nexus-exchange",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "translator-serving"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "datom-codec",
  "nexus-exchange",

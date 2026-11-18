@@ -4,8 +4,8 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 use nexus_exchange::lane::{Frame, Kind, Lane, LaneReading, LaneWriting, TransportError};
-use nexus_exchange::{Named, SocketNaming};
-use shared_translator::placement::{Place, PlaceResolutionError, resolve_place, runtime_path};
+use nexus_exchange::{Named, SocketPaths};
+use shared_translator::placement::{Place, PlaceResolutionError, resolve_place};
 
 use crate::generated::TextLane;
 
@@ -46,13 +46,13 @@ pub trait TranslatorPlacing: Sized {
 
 impl TranslatorPlacing for TextClient {
     fn at<Component: Named>(place: &Place, lane: TextLane, admission_limit: usize) -> Self {
-        let names = Component::name().socket_names();
+        let paths = SocketPaths::<Component>::from(place);
         let socket = match lane {
-            TextLane::PublicText => names.public_translator_socket.0,
-            TextLane::MetaText => names.meta_translator_socket.0,
+            TextLane::PublicText => paths.translator,
+            TextLane::MetaText => paths.meta_translator,
         };
         Self {
-            socket: runtime_path(place).join(socket),
+            socket,
             lane,
             admission_limit,
         }
