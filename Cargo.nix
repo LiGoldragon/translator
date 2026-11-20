@@ -992,8 +992,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "24804e89416fd64644355527ee219d7a40d3462e";
-          sha256 = "06bzqq7ms4w70viidl1mw5jgc761npm1y76sy4lgwwy9dx9gh1f6";
+          rev = "ea4db5a51083f114c624fc23c023c7a255376846";
+          sha256 = "1dhb8qfhw47cyz23lvgmag7nwjjx0611m8rpm9d482ph4cpv3n2v";
         };
         dependencies = [
           {
@@ -1059,8 +1059,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "24804e89416fd64644355527ee219d7a40d3462e";
-          sha256 = "06bzqq7ms4w70viidl1mw5jgc761npm1y76sy4lgwwy9dx9gh1f6";
+          rev = "ea4db5a51083f114c624fc23c023c7a255376846";
+          sha256 = "1dhb8qfhw47cyz23lvgmag7nwjjx0611m8rpm9d482ph4cpv3n2v";
         };
         libName = "nexus_client";
         dependencies = [

@@ -299,7 +299,7 @@ dependencies = [
 [[package]]
 name = "nexus"
 version = "0.9.0"
-source = "git+https://github.com/LiGoldragon/nexus?rev=24804e89416fd64644355527ee219d7a40d3462e#24804e89416fd64644355527ee219d7a40d3462e"
+source = "git+https://github.com/LiGoldragon/nexus?rev=ea4db5a51083f114c624fc23c023c7a255376846#ea4db5a51083f114c624fc23c023c7a255376846"
 dependencies = [
  "datom-codec",
  "ethos-zero 30.0.0",
@@ -314,7 +314,7 @@ dependencies = [
 [[package]]
 name = "nexus-client"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nexus?rev=24804e89416fd64644355527ee219d7a40d3462e#24804e89416fd64644355527ee219d7a40d3462e"
+source = "git+https://github.com/LiGoldragon/nexus?rev=ea4db5a51083f114c624fc23c023c7a255376846#ea4db5a51083f114c624fc23c023c7a255376846"
 dependencies = [
  "datom-codec",
  "nexus",
