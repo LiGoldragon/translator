@@ -1,16 +1,16 @@
 //! The one observed configuration subscription. Socket events and unavailable
 //! text arrivals request a dial; concurrent arrivals share its observation.
-use crate::{ConfigurationFollowing, frame_capacity};
+use crate::{Callable, ConfigurationFollowing, frame_capacity};
 use datom_codec::Budget;
-use nexus::{SignalReceiving, SignalSubmitting};
+use nexus::SignalReceiving;
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use std::{future::Future, io, os::unix::ffi::OsStrExt, path::Path, sync::Arc};
 use tokio::{
-    io::unix::AsyncFd,
+    io::{AsyncWriteExt, unix::AsyncFd},
     net::UnixStream,
     sync::{mpsc, watch},
 };
-use translator::{Call, Caller, DatomReadingBudget};
+use translator::{Caller, DatomReadingBudget};
 
 pub trait Budgeting {
     fn reading_budget(&self) -> Option<Budget>;
@@ -158,16 +158,10 @@ impl ConfigurationObserving for ConfigurationWatch {
     async fn connect<C: ConfigurationFollowing>(&self, caller: Caller) -> Option<UnixStream> {
         let attempt = async {
             let mut stream = UnixStream::connect(&self.socket).await.ok()?;
-            stream
-                .submit(
-                    Call {
-                        caller,
-                        input: C::subscribe_configuration(),
-                    },
-                    frame_capacity(),
-                )
-                .await
+            let call = C::subscribe_configuration()
+                .framed_call(caller, frame_capacity())
                 .ok()?;
+            stream.write_all(&call).await.ok()?;
             let output = stream
                 .receive::<C::MetaOutput>(frame_capacity())
                 .await

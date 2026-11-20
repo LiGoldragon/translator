@@ -6,7 +6,7 @@ use nexus_client::Named;
 mod component;
 mod configuration;
 mod serving;
-pub use component::{ConfigurationFollowing, Emittable, Translating};
+pub use component::{Callable, ConfigurationFollowing, Emittable, Translating};
 use configuration::{BudgetHandle, ConfigurationWatch};
 pub use configuration::{Budgeting, ConfigurationObservation, ObservingConfiguration};
 pub use serving::{

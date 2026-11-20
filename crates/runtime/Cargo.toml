@@ -15,7 +15,7 @@ signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", defau
 datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", features = ["rkyv"] }
 protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598" }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
-tokio = { version = "1.53.1", default-features = false, features = ["rt", "macros", "net", "io-util", "sync"] }
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "macros", "net", "io-util", "sync", "signal", "tracing"] }
 
 nix = { version = "0.30", default-features = false, features = ["inotify"] }
 rustix = { version = "1", features = ["process"] }
@@ -25,7 +25,8 @@ rustix = { version = "1", features = ["process"] }
 mio = { version = "1.2", features = ["log"] }
 
 [dev-dependencies]
-futures-util = { version = "0.3.34", default-features = false }
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await-macro", "channel", "io", "sink"] }
+futures-channel = { version = "0.3.34", default-features = false, features = ["sink"] }
 tokio = { version = "1.53.1", default-features = false, features = ["process", "time"] }
 signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false, features = ["datom"] }
 tempfile = "3"

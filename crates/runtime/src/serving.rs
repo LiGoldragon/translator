@@ -2,7 +2,7 @@
 //! and Nexus streams are observed concurrently, without idle timers.
 use crate::configuration::{BudgetObserving, ConfigurationObserving};
 use crate::{
-    BudgetHandle, ConfigurationFollowing, ConfigurationWatch, Emittable, SocketLocating,
+    BudgetHandle, Callable, ConfigurationFollowing, ConfigurationWatch, Emittable, SocketLocating,
     SocketPaths, frame_capacity,
 };
 use datom_codec::{Actualizing, Budget, Datomizable, Potential};
@@ -11,11 +11,11 @@ use nexus_client::{Served, TextReply, TextRequest, TextSocket};
 use protos::{Compactable, Protosizable};
 use std::{future::Future, io, marker::PhantomData, os::unix::fs::MetadataExt, path::PathBuf};
 use tokio::{
-    io::{AsyncReadExt, AsyncWrite},
+    io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{UnixListener, UnixStream},
     task::JoinSet,
 };
-use translator::{Call, Caller, OutputMode, ProcessId, Translator, UserId};
+use translator::{Caller, OutputMode, ProcessId, Translator, UserId};
 
 #[derive(Debug)]
 pub enum RuntimeError {
@@ -95,6 +95,9 @@ pub trait Serving {
 impl<C: ConfigurationFollowing> BindingTranslator<C> for Translator {
     fn bind(self) -> Result<BoundTranslator<C>, RuntimeError> {
         let paths = self.socket_paths::<C>();
+        if !std::path::Path::new(&self.place.runtime.0).is_absolute() {
+            return Err(RuntimeError::Io(io::ErrorKind::InvalidInput.into()));
+        }
         std::fs::create_dir_all(&self.place.runtime.0)?;
         let ordinary = BoundSocket::bind(paths.ordinary_text.clone())?;
         let meta = BoundSocket::bind(paths.meta_text.clone())?;
@@ -164,11 +167,7 @@ trait Answering {
         socket: TextSocket,
         output: &mut W,
     ) -> impl Future<Output = Result<(), RuntimeError>> + Send;
-    fn relay<
-        I: WireValue + datom_codec::Composing,
-        O: WireValue + Datomizable,
-        W: AsyncWrite + Unpin + Send,
-    >(
+    fn relay<I: Callable, O: WireValue + Datomizable, W: AsyncWrite + Unpin + Send>(
         &self,
         text: String,
         caller: Caller,
@@ -232,11 +231,7 @@ impl Answering for Context {
             },
         }
     }
-    async fn relay<
-        I: WireValue + datom_codec::Composing,
-        O: WireValue + Datomizable,
-        W: AsyncWrite + Unpin + Send,
-    >(
+    async fn relay<I: Callable, O: WireValue + Datomizable, W: AsyncWrite + Unpin + Send>(
         &self,
         text: String,
         caller: Caller,
@@ -266,11 +261,16 @@ impl Answering for Context {
                 return Ok(());
             }
         };
-        if nexus
-            .submit(Call { caller, input }, frame_capacity())
-            .await
-            .is_err()
-        {
+        let call = match input.framed_call(caller, frame_capacity()) {
+            Ok(call) => call,
+            Err(_) => {
+                output
+                    .submit(TextReply::Served(Served::NexusDown), frame_capacity())
+                    .await?;
+                return Ok(());
+            }
+        };
+        if nexus.write_all(&call).await.is_err() {
             output
                 .submit(TextReply::Served(Served::NexusDown), frame_capacity())
                 .await?;
