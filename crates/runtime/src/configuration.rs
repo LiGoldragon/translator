@@ -38,10 +38,36 @@ pub(crate) struct BudgetHandle {
     observed: watch::Receiver<Arc<Observation>>,
     dial: mpsc::UnboundedSender<Arc<Observation>>,
 }
+/// A read-only subscription to the currently observed Nexus budget.
+/// This is a channel resource, not another configured value.
+pub struct ConfigurationObservation {
+    observed: watch::Receiver<Arc<Observation>>,
+}
+pub trait ObservingConfiguration {
+    fn budget(&self) -> Option<DatomReadingBudget>;
+    fn changed(
+        &mut self,
+    ) -> impl Future<Output = Result<Option<DatomReadingBudget>, watch::error::RecvError>> + Send;
+}
+impl ObservingConfiguration for ConfigurationObservation {
+    fn budget(&self) -> Option<DatomReadingBudget> {
+        self.observed.borrow().budget.clone()
+    }
+    async fn changed(&mut self) -> Result<Option<DatomReadingBudget>, watch::error::RecvError> {
+        self.observed.changed().await?;
+        Ok(self.budget())
+    }
+}
 pub(crate) trait BudgetObserving {
+    fn observation(&self) -> ConfigurationObservation;
     fn current(&self) -> impl Future<Output = Option<Budget>> + Send;
 }
 impl BudgetObserving for BudgetHandle {
+    fn observation(&self) -> ConfigurationObservation {
+        ConfigurationObservation {
+            observed: self.observed.clone(),
+        }
+    }
     async fn current(&self) -> Option<Budget> {
         let mut observed = self.observed.clone();
         let before = observed.borrow().clone();

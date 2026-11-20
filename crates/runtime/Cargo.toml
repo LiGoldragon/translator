@@ -20,7 +20,14 @@ tokio = { version = "1.53.1", default-features = false, features = ["rt", "macro
 nix = { version = "0.30", default-features = false, features = ["inotify"] }
 rustix = { version = "1", features = ["process"] }
 
+# The registered build-base mio set attaches its log dependency; declare
+# that feature edge so Cargo.lock/Cargo.nix carry the complete shared set.
+mio = { version = "1.2", features = ["log"] }
+
 [dev-dependencies]
+futures-util = { version = "0.3.34", default-features = false }
+tokio = { version = "1.53.1", default-features = false, features = ["process", "time"] }
+signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false, features = ["datom"] }
 tempfile = "3"
 
 [lints.rust]

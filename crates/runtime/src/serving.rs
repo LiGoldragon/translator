@@ -81,6 +81,14 @@ pub struct BoundTranslator<C> {
 pub trait BindingTranslator<C: ConfigurationFollowing> {
     fn bind(self) -> Result<BoundTranslator<C>, RuntimeError>;
 }
+pub trait ConfigurationWatching {
+    fn configuration(&self) -> crate::ConfigurationObservation;
+}
+impl<C> ConfigurationWatching for BoundTranslator<C> {
+    fn configuration(&self) -> crate::ConfigurationObservation {
+        self.budget.observation()
+    }
+}
 pub trait Serving {
     fn serve(self) -> impl Future<Output = Result<(), RuntimeError>> + Send;
 }

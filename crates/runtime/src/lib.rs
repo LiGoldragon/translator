@@ -7,9 +7,11 @@ mod component;
 mod configuration;
 mod serving;
 pub use component::{ConfigurationFollowing, Emittable, Translating};
-pub use configuration::Budgeting;
 use configuration::{BudgetHandle, ConfigurationWatch};
-pub use serving::{BindingTranslator, BoundTranslator, RuntimeError, Serving};
+pub use configuration::{Budgeting, ConfigurationObservation, ObservingConfiguration};
+pub use serving::{
+    BindingTranslator, BoundTranslator, ConfigurationWatching, RuntimeError, Serving,
+};
 
 use std::path::PathBuf;
 pub use translator::{Caller, Place, PlaceName, ProcessId, Runtime, State, Translator, UserId};

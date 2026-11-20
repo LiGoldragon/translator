@@ -348,7 +348,7 @@ rec {
           "default" = [ "std" ];
           "std" = [ "libc/std" ];
         };
-        resolvedDefaultFeatures = [ "std" ];
+        resolvedDefaultFeatures = [ "default" "std" ];
       };
       "ethos-zero 22.0.0" = rec {
         crateName = "ethos-zero";
@@ -733,6 +733,30 @@ rec {
         };
         resolvedDefaultFeatures = [ "auxvec" "elf" "errno" "general" "ioctl" "no_std" "prctl" ];
       };
+      "log" = rec {
+        crateName = "log";
+        version = "0.4.35";
+        edition = "2021";
+        sha256 = "0p002750b2hab9bnlxxrvk5g9dvyaf23kiy39s6wsi6s29nzh5ax";
+        authors = [
+          "The Rust Project Developers"
+        ];
+        features = {
+          "kv_serde" = [ "kv_std" "value-bag/serde" "serde" ];
+          "kv_std" = [ "std" "kv" "value-bag/error" ];
+          "kv_sval" = [ "kv" "value-bag/sval" "sval" "sval_ref" ];
+          "kv_unstable" = [ "kv" "value-bag" ];
+          "kv_unstable_serde" = [ "kv_serde" "kv_unstable_std" ];
+          "kv_unstable_std" = [ "kv_std" "kv_unstable" ];
+          "kv_unstable_sval" = [ "kv_sval" "kv_unstable" ];
+          "serde" = [ "serde_core" ];
+          "serde_core" = [ "dep:serde_core" ];
+          "std" = [ "alloc" ];
+          "sval" = [ "dep:sval" ];
+          "sval_ref" = [ "dep:sval_ref" ];
+          "value-bag" = [ "dep:value-bag" ];
+        };
+      };
       "memoffset" = rec {
         crateName = "memoffset";
         version = "0.9.1";
@@ -768,6 +792,11 @@ rec {
             target = { target, features }: ((target."unix" or false) || ("hermit" == target."os" or null) || ("wasi" == target."os" or null));
           }
           {
+            name = "log";
+            packageId = "log";
+            optional = true;
+          }
+          {
             name = "wasi";
             packageId = "wasi";
             target = { target, features }: ("wasi" == target."os" or null);
@@ -784,7 +813,7 @@ rec {
           "log" = [ "dep:log" ];
           "os-ext" = [ "os-poll" "windows-sys/Win32_System_Pipes" "windows-sys/Win32_Security" ];
         };
-        resolvedDefaultFeatures = [ "net" "os-ext" "os-poll" ];
+        resolvedDefaultFeatures = [ "default" "log" "net" "os-ext" "os-poll" ];
       };
       "munge" = rec {
         crateName = "munge";
@@ -1498,9 +1527,19 @@ rec {
         };
         dependencies = [
           {
+            name = "datom-codec";
+            packageId = "datom-codec";
+            optional = true;
+          }
+          {
             name = "futures-core";
             packageId = "futures-core";
             usesDefaultFeatures = false;
+          }
+          {
+            name = "protos";
+            packageId = "protos";
+            optional = true;
           }
           {
             name = "rkyv";
@@ -1522,7 +1561,29 @@ rec {
         features = {
           "datom" = [ "dep:datom-codec" "dep:protos" ];
         };
-        resolvedDefaultFeatures = [ "default" ];
+        resolvedDefaultFeatures = [ "datom" "default" ];
+      };
+      "signal-hook-registry" = rec {
+        crateName = "signal-hook-registry";
+        version = "1.4.8";
+        edition = "2015";
+        sha256 = "06vc7pmnki6lmxar3z31gkyg9cw7py5x9g7px70gy2hil75nkny4";
+        libName = "signal_hook_registry";
+        authors = [
+          "Michal 'vorner' Vaner <vorner@vorner.cz>"
+          "Masaki Hara <ackie.h.gmai@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "errno";
+            packageId = "errno";
+          }
+          {
+            name = "libc";
+            packageId = "libc";
+          }
+        ];
+
       };
       "simdutf8" = rec {
         crateName = "simdutf8";
@@ -1828,6 +1889,12 @@ rec {
             packageId = "pin-project-lite";
           }
           {
+            name = "signal-hook-registry";
+            packageId = "signal-hook-registry";
+            optional = true;
+            target = { target, features }: (target."unix" or false);
+          }
+          {
             name = "socket2";
             packageId = "socket2";
             optional = true;
@@ -1885,7 +1952,7 @@ rec {
           "tracing" = [ "dep:tracing" ];
           "windows-sys" = [ "dep:windows-sys" ];
         };
-        resolvedDefaultFeatures = [ "bytes" "io-util" "libc" "macros" "mio" "net" "rt" "socket2" "sync" "tokio-macros" "windows-sys" ];
+        resolvedDefaultFeatures = [ "bytes" "io-util" "libc" "macros" "mio" "net" "process" "rt" "signal-hook-registry" "socket2" "sync" "time" "tokio-macros" "windows-sys" ];
       };
       "tokio-macros" = rec {
         crateName = "tokio-macros";
@@ -1979,6 +2046,11 @@ rec {
             features = [ "rkyv" ];
           }
           {
+            name = "mio";
+            packageId = "mio";
+            features = [ "log" ];
+          }
+          {
             name = "nexus";
             packageId = "nexus";
           }
@@ -2026,8 +2098,25 @@ rec {
         ];
         devDependencies = [
           {
+            name = "futures-util";
+            packageId = "futures-util";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "signal";
+            packageId = "signal";
+            usesDefaultFeatures = false;
+            features = [ "datom" ];
+          }
+          {
             name = "tempfile";
             packageId = "tempfile";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            usesDefaultFeatures = false;
+            features = [ "process" "time" ];
           }
         ];
 
