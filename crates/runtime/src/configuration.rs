@@ -4,7 +4,16 @@ use crate::{Callable, ConfigurationFollowing, frame_capacity};
 use datom_codec::Budget;
 use nexus::SignalReceiving;
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
-use std::{future::Future, io, os::unix::ffi::OsStrExt, path::Path, sync::Arc};
+use std::{
+    future::Future,
+    io,
+    os::{
+        fd::{AsFd, AsRawFd, RawFd},
+        unix::ffi::OsStrExt,
+    },
+    path::Path,
+    sync::Arc,
+};
 use tokio::{
     io::{AsyncWriteExt, unix::AsyncFd},
     net::UnixStream,
@@ -85,9 +94,17 @@ impl BudgetObserving for BudgetHandle {
     }
 }
 
+/// Owns the inotify resource and exposes its descriptor to Tokio readiness.
+pub(crate) struct InotifyDescriptor(Inotify);
+impl AsRawFd for InotifyDescriptor {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_fd().as_raw_fd()
+    }
+}
+
 pub(crate) struct ConfigurationWatch {
     socket: std::path::PathBuf,
-    watcher: AsyncFd<Inotify>,
+    watcher: AsyncFd<InotifyDescriptor>,
     requests: mpsc::UnboundedReceiver<Arc<Observation>>,
     observed: watch::Sender<Arc<Observation>>,
 }
@@ -95,7 +112,7 @@ pub(crate) trait ConfigurationObserving: Sized {
     fn create(socket: std::path::PathBuf) -> io::Result<(Self, BudgetHandle)>;
     fn publish(&self, budget: Option<DatomReadingBudget>);
     fn socket_event(
-        watcher: &AsyncFd<Inotify>,
+        watcher: &AsyncFd<InotifyDescriptor>,
         path: &Path,
     ) -> impl Future<Output = io::Result<()>> + Send;
     fn connect<C: ConfigurationFollowing>(
@@ -117,7 +134,7 @@ impl ConfigurationObserving for ConfigurationWatch {
                 AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO,
             )
             .map_err(io::Error::from)?;
-        let watcher = AsyncFd::new(watcher)?;
+        let watcher = AsyncFd::new(InotifyDescriptor(watcher))?;
         let (observed, receiver) = watch::channel(Arc::new(Observation { budget: None }));
         let (dial, requests) = mpsc::unbounded_channel();
         Ok((
@@ -136,10 +153,10 @@ impl ConfigurationObserving for ConfigurationWatch {
     fn publish(&self, budget: Option<DatomReadingBudget>) {
         self.observed.send_replace(Arc::new(Observation { budget }));
     }
-    async fn socket_event(watcher: &AsyncFd<Inotify>, path: &Path) -> io::Result<()> {
+    async fn socket_event(watcher: &AsyncFd<InotifyDescriptor>, path: &Path) -> io::Result<()> {
         loop {
             let mut ready = watcher.readable().await?;
-            match ready.try_io(|inner| inner.get_ref().read_events().map_err(io::Error::from)) {
+            match ready.try_io(|inner| inner.get_ref().0.read_events().map_err(io::Error::from)) {
                 Ok(Ok(events)) => {
                     if events.iter().any(|event| {
                         event.name.as_ref().is_some_and(|name| {
