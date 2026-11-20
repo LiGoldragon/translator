@@ -992,8 +992,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "4087f4b68b20fd926a1ed9c3c049f42c46ea095f";
-          sha256 = "1d3d72ncqsp4xpa8carghcniyin32xlc58m392lr6gq5s3afskg8";
+          rev = "24804e89416fd64644355527ee219d7a40d3462e";
+          sha256 = "06bzqq7ms4w70viidl1mw5jgc761npm1y76sy4lgwwy9dx9gh1f6";
         };
         dependencies = [
           {
@@ -1020,6 +1020,7 @@ rec {
           {
             name = "signal";
             packageId = "signal";
+            usesDefaultFeatures = false;
           }
           {
             name = "thiserror";
@@ -1058,8 +1059,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/LiGoldragon/nexus";
-          rev = "4087f4b68b20fd926a1ed9c3c049f42c46ea095f";
-          sha256 = "1d3d72ncqsp4xpa8carghcniyin32xlc58m392lr6gq5s3afskg8";
+          rev = "24804e89416fd64644355527ee219d7a40d3462e";
+          sha256 = "06bzqq7ms4w70viidl1mw5jgc761npm1y76sy4lgwwy9dx9gh1f6";
         };
         libName = "nexus_client";
         dependencies = [
@@ -1071,6 +1072,7 @@ rec {
           {
             name = "nexus";
             packageId = "nexus";
+            usesDefaultFeatures = false;
           }
           {
             name = "protos";
@@ -1685,7 +1687,7 @@ rec {
         features = {
           "datom" = [ "dep:datom-codec" "dep:protos" ];
         };
-        resolvedDefaultFeatures = [ "datom" "default" ];
+        resolvedDefaultFeatures = [ "datom" ];
       };
       "signal-hook-registry" = rec {
         crateName = "signal-hook-registry";
