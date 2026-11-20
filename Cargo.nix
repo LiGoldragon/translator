@@ -735,9 +735,9 @@ rec {
       };
       "log" = rec {
         crateName = "log";
-        version = "0.4.35";
+        version = "0.4.34";
         edition = "2021";
-        sha256 = "0p002750b2hab9bnlxxrvk5g9dvyaf23kiy39s6wsi6s29nzh5ax";
+        sha256 = "1ihkzn0m33ab79fcl4mkb04n5iwqzbxzyw7l7hazqkffaqzbvy7r";
         authors = [
           "The Rust Project Developers"
         ];
