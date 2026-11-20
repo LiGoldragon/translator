@@ -1,0 +1,29 @@
+[package]
+name = "translator-runtime"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "The architecture-one three-socket translator runtime."
+
+[dependencies]
+translator = { path = "../..", version = "0.2.0", features = ["text", "unix"] }
+nexus = { git = "https://github.com/LiGoldragon/nexus", rev = "4087f4b68b20fd926a1ed9c3c049f42c46ea095f" }
+nexus-client = { git = "https://github.com/LiGoldragon/nexus", rev = "4087f4b68b20fd926a1ed9c3c049f42c46ea095f" }
+signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false }
+datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", features = ["rkyv"] }
+protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598" }
+rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "macros", "net", "io-util", "sync"] }
+
+nix = { version = "0.30", default-features = false, features = ["inotify"] }
+rustix = { version = "1", features = ["process"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+unused = { level = "warn", priority = -1 }
+dead_code = "warn"

@@ -251,3 +251,9 @@ pub use placement::{Place, PlaceName, PlacePreparationError, Preparable, Runtime
 
 #[cfg(feature = "unix")]
 pub mod unix;
+
+#[path = "../generated/library.rs"]
+mod generated_library;
+pub use generated_library::{DatomReadingBudget, FrameCapacityBytes, OutputMode, ReadingDepth, ReadingSteps, Translator};
+mod call;
+pub use call::{Call, FRAME_CAPACITY_BYTES};

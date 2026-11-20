@@ -1,0 +1,10 @@
+Library
+[ :crate:placement:Place ]
+[ Translator.{ Place }
+  FrameCapacityBytes.Integer
+  ReadingSteps.Integer
+  ReadingDepth.Integer
+  DatomReadingBudget.{ ReadingSteps ReadingDepth }
+  OutputMode.[ Single Streaming ] ]
+[]
+[]
