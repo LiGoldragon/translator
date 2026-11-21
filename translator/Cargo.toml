@@ -1,0 +1,16 @@
+[package]
+name = "translator"
+version = "1.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "The translator library every Nexus's translator shares, written once: its sockets and their serving, the caller, the CLI and the hook client, a lasting emission and the running of a program."
+
+[dependencies]
+transport = { package = "translator-transport", path = "../transport" }
+datom-codec = { workspace = true }
+protos = { workspace = true }
+rustix = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"

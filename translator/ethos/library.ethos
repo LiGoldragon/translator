@@ -1,0 +1,18 @@
+Library
+[ transport:[ Caller Unsent ]
+  datom_codec:[ Error ] ]
+[ Served.[ Answered
+           Unreadable.Error
+           NexusDown ]
+  TextSocket.[ Ordinary Meta ]
+  Ending.[ Answered
+           Failed
+           Unsent ]
+  Untranslated.[ Unreadable
+                 UnknownEvent.String
+                 MissingField.String ]
+  Waited.[ Woken Closed ]
+  Lines.{ Vector<String>
+          Offset.Integer } ]
+[]
+[]
