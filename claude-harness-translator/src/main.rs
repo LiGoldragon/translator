@@ -80,9 +80,10 @@ where
     }
     while let Ok(Some(output)) = O::read_from(&mut nexus) {
         if writeln!(text, "{}", output.datomize(vec![]).protosize().textualize()).is_err() {
-            return;
+            break;
         }
     }
+    let _ = text.shutdown(std::net::Shutdown::Both);
 }
 
 fn serve_texts(texts: UnixListener, place: &Place, serve: fn(UnixStream, &Place)) {
