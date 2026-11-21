@@ -109,27 +109,33 @@ fn rows_after(path: &str, offset: &Offset, count: &Count) -> io::Result<Rows> {
 }
 
 /// A lasting emission: an outcome each time the transcript grows, until the
-/// Nexus closes the connection.
+/// Nexus closes the connection. A transcript not yet written is waited for in
+/// its directory; Missing is a directory that is not there.
 pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
     let path = follow.file_path.0.clone();
+    let directory = std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new("/")).to_owned();
     let watching = inotify::init(inotify::CreateFlags::CLOEXEC)?;
-    if inotify::add_watch(&watching, path.as_str(), inotify::WatchFlags::MODIFY).is_err() {
+    let Ok(appearing) = inotify::add_watch(&watching, &directory, inotify::WatchFlags::CREATE | inotify::WatchFlags::MOVED_TO) else {
         return Following::Missing.write_to(&mut stream);
-    }
+    };
+    let mut followed = false;
     let mut offset = follow.offset.clone();
     let mut events = [0u8; 4096];
     loop {
-        let rows = match rows_after(&path, &offset, &follow.count) {
-            Ok(rows) => rows,
-            Err(_) => return Following::Missing.write_to(&mut stream),
-        };
-        let full = rows.row_vector.len() as i64 >= follow.count.0;
-        if !rows.row_vector.is_empty() {
-            offset = rows.offset.clone();
-            Following::Rows(rows).write_to(&mut stream)?;
+        if !followed && inotify::add_watch(&watching, path.as_str(), inotify::WatchFlags::MODIFY).is_ok() {
+            followed = true;
+            inotify::remove_watch(&watching, appearing)?;
         }
-        if full {
-            continue;
+        if followed {
+            let rows = rows_after(&path, &offset, &follow.count)?;
+            let full = rows.row_vector.len() as i64 >= follow.count.0;
+            if !rows.row_vector.is_empty() {
+                offset = rows.offset.clone();
+                Following::Rows(rows).write_to(&mut stream)?;
+            }
+            if full {
+                continue;
+            }
         }
         let mut waiting = [PollFd::new(&watching, PollFlags::IN), PollFd::new(&stream, PollFlags::IN)];
         rustix::event::poll(&mut waiting, None)?;
