@@ -113,8 +113,8 @@ dependencies = [
 
 [[package]]
 name = "ethos-zero"
-version = "30.0.0"
-source = "git+https://github.com/LiGoldragon/ethos-zero?rev=b97d952#b97d9526909a1ecebf61339f5723eaca53de5dca"
+version = "30.0.1"
+source = "git+https://github.com/LiGoldragon/ethos-zero?rev=2999292dc67c8608e54d32c333c550b29153cbff#2999292dc67c8608e54d32c333c550b29153cbff"
 dependencies = [
  "datom-codec",
  "prettyplease",
@@ -299,10 +299,10 @@ dependencies = [
 [[package]]
 name = "nexus"
 version = "0.9.0"
-source = "git+https://github.com/LiGoldragon/nexus?rev=ea4db5a51083f114c624fc23c023c7a255376846#ea4db5a51083f114c624fc23c023c7a255376846"
+source = "git+https://github.com/LiGoldragon/nexus?rev=681a99ba307acd9cce6d5c120846072f1cedd814#681a99ba307acd9cce6d5c120846072f1cedd814"
 dependencies = [
  "datom-codec",
- "ethos-zero 30.0.0",
+ "ethos-zero 30.0.1",
  "futures-util",
  "protos",
  "rkyv",
@@ -314,7 +314,7 @@ dependencies = [
 [[package]]
 name = "nexus-client"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nexus?rev=ea4db5a51083f114c624fc23c023c7a255376846#ea4db5a51083f114c624fc23c023c7a255376846"
+source = "git+https://github.com/LiGoldragon/nexus?rev=681a99ba307acd9cce6d5c120846072f1cedd814#681a99ba307acd9cce6d5c120846072f1cedd814"
 dependencies = [
  "datom-codec",
  "nexus",

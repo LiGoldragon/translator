@@ -9,8 +9,8 @@ description = "The architecture-one three-socket translator runtime."
 
 [dependencies]
 translator = { path = "../..", version = "0.2.0", features = ["text", "unix"] }
-nexus = { git = "https://github.com/LiGoldragon/nexus", rev = "ea4db5a51083f114c624fc23c023c7a255376846" }
-nexus-client = { git = "https://github.com/LiGoldragon/nexus", rev = "ea4db5a51083f114c624fc23c023c7a255376846" }
+nexus = { git = "https://github.com/LiGoldragon/nexus", rev = "681a99ba307acd9cce6d5c120846072f1cedd814" }
+nexus-client = { git = "https://github.com/LiGoldragon/nexus", rev = "681a99ba307acd9cce6d5c120846072f1cedd814" }
 signal = { git = "https://github.com/LiGoldragon/signal", rev = "4f5cbb9", default-features = false }
 datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", features = ["rkyv"] }
 protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598" }
