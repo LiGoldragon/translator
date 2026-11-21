@@ -93,13 +93,13 @@ impl Translatable for Row {
     }
 }
 
-/// Reads the whole lines after the offset, at most count of them.
-fn rows_after(path: &str, offset: &Offset, count: &Count) -> io::Result<Rows> {
+/// Reads the whole lines after the offset, at most the row count of them.
+fn rows_after(path: &str, offset: &Offset, row_count: &RowCount) -> io::Result<Following> {
     let mut file = BufReader::new(File::open(path)?);
     file.seek(SeekFrom::Start(offset.0.max(0) as u64))?;
-    let mut rows = Rows { row_vector: Vec::new(), offset: offset.clone() };
+    let mut rows = Following { row_vector: Vec::new(), offset: offset.clone() };
     let mut line = Vec::new();
-    while (rows.row_vector.len() as i64) < count.0 {
+    while (rows.row_vector.len() as i64) < row_count.0 {
         line.clear();
         let read = file.read_until(b'\n', &mut line)?;
         if read == 0 || line.last() != Some(&b'\n') {
@@ -114,6 +114,7 @@ fn rows_after(path: &str, offset: &Offset, count: &Count) -> io::Result<Rows> {
 /// A lasting emission: an outcome each time the transcript grows, until the
 /// Nexus closes the connection. A transcript not yet written is waited for:
 /// its nearest existing ancestor is watched until each missing part appears.
+/// A path with no ancestor at all ends the connection, and the emission is Unanswered.
 pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
     let path = std::path::PathBuf::from(&follow.file_path.0);
     let watching = inotify::init(inotify::CreateFlags::CLOEXEC)?;
@@ -131,7 +132,7 @@ pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
                 break;
             }
             let Some(nearest) = path.ancestors().skip(1).find(|ancestor| ancestor.is_dir()).map(std::path::Path::to_owned) else {
-                return Following::Missing.write_to(&mut stream);
+                return Err(io::Error::new(io::ErrorKind::NotFound, "no ancestor of the transcript exists"));
             };
             if appearing.as_ref().is_some_and(|(directory, _)| *directory == nearest) {
                 break;
@@ -143,11 +144,11 @@ pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
             appearing = Some((nearest, watch));
         }
         if followed {
-            let rows = rows_after(&follow.file_path.0, &offset, &follow.count)?;
-            let full = rows.row_vector.len() as i64 >= follow.count.0;
+            let rows = rows_after(&follow.file_path.0, &offset, &follow.row_count)?;
+            let full = rows.row_vector.len() as i64 >= follow.row_count.0;
             if !rows.row_vector.is_empty() {
                 offset = rows.offset.clone();
-                Following::Rows(rows).write_to(&mut stream)?;
+                rows.write_to(&mut stream)?;
             }
             if full {
                 continue;
@@ -160,6 +161,13 @@ pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
         }
         rustix::io::read(&watching, &mut events)?;
     }
+}
+
+/// The translator itself as a caller: its process, and the user that owns it.
+pub fn itself() -> io::Result<Caller> {
+    use std::os::unix::fs::MetadataExt;
+    let user_id = std::fs::metadata("/proc/self")?.uid();
+    Ok(Caller { process_id: ProcessId(std::process::id().into()), user_id: UserId(user_id.into()) })
 }
 
 /// The hook's caller, from the connection's peer credentials.

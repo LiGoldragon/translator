@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use std::thread;
 
 use claude_harness_process::*;
-use claude_harness_translator::{Translatable, caller, follow};
+use claude_harness_translator::{Translatable, caller, follow, itself};
 use datom_codec::Datomizable;
 use protos::{Protosizable, Textualizable};
 use rustix::event::{PollFd, PollFlags};
@@ -86,6 +86,14 @@ where
     let _ = text.shutdown(std::net::Shutdown::Both);
 }
 
+/// Once its sockets listen, the translator tells its Nexus so, and the Nexus
+/// gives each record that has a process and no living one its process again.
+/// A Nexus that is down is told nothing: it bears them at its own start.
+fn listening(place: &Place) {
+    let (Ok(caller), Ok(mut nexus)) = (itself(), UnixStream::connect(place.path(Placed::NexusSocket))) else { return };
+    let _ = (Call { caller, input: Input::Listening }).write_to(&mut nexus);
+}
+
 fn serve_texts(texts: UnixListener, place: &Place, serve: fn(UnixStream, &Place)) {
     let place = place.clone();
     thread::spawn(move || {
@@ -123,6 +131,7 @@ fn main() -> ExitCode {
             });
         }
     });
+    listening(&place);
     serve_texts(texts, &place, |text, place| serve_text::<Input, Call, Output>(text, place, Placed::NexusSocket, |caller, input| Call { caller, input }));
     serve_texts(meta_texts, &place, |text, place| {
         serve_text::<MetaInput, MetaCall, MetaOutput>(text, place, Placed::MetaSocket, |caller, meta_input| MetaCall { caller, meta_input })
