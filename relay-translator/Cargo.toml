@@ -1,0 +1,17 @@
+[package]
+name = "relay-translator"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "The Relay Nexus's translator and its clients: the CLI relay, the hook client relay-hook, and the translator relay-translator. Each is the translator library with the Nexus's name and the words of its own calls."
+
+[dependencies]
+relay-signal = { path = "../relay-signal", features = ["datom"] }
+translator = { path = "../translator" }
+
+[dev-dependencies]
+relay-nexus = { path = "../relay-nexus" }
+
+[lints.rust]
+unsafe_code = "forbid"

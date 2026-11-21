@@ -1,0 +1,17 @@
+Emission
+[]
+[ Command
+  Follow ]
+[ Finished
+  Lines ]
+[ Program.String
+  Argument.String
+  Words.String
+  FilePath.String
+  Offset.Integer
+  Count.Integer
+  Line.String
+  Command.{ Program Vector<Argument> }
+  Follow.{ FilePath Offset Count }
+  Finished.[ Done.Words Refused.Integer ]
+  Lines.{ Vector<Line> Offset } ]

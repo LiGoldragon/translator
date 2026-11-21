@@ -1,0 +1,18 @@
+Signal
+[ relay:emission:[ Command Follow Finished Line ]
+  translator_transport:[ Caller Unobserved ] ]
+[ Run.Command
+  Follow.Follow
+  Report.Hook
+  Seen
+  Listening ]
+[ Ran.Finished
+  Following
+  Reported
+  Noticed.Vector<Notice>
+  Acknowledged
+  Unobserved ]
+[ Name.String
+  Hook.[ Started.Name Ended.Name ]
+  Notice.[ Hooked.Hook Lined.Line ]
+  Call.{ Caller Input } ]
