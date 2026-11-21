@@ -49,11 +49,15 @@ impl Translatable for Hook {
         let value: Value = serde_json::from_str(payload).map_err(|_| Untranslated::Unreadable)?;
         let session = || text(&value, "session_id").map(Session);
         Ok(match text(&value, "hook_event_name")?.as_str() {
-            // A start on resume or on compact is not yet read: its mapping waits on a ruling.
-            "SessionStart" => match text(&value, "source").ok().as_deref() {
-                Some(source @ ("resume" | "compact")) => return Err(Untranslated::UnknownEvent(format!("SessionStart from {source}"))),
-                _ => Hook::SessionStart(SessionStart { session: session()?, file_path: FilePath(text(&value, "transcript_path")?) }),
-            },
+            "SessionStart" => Hook::SessionStart(SessionStart {
+                session: session()?,
+                file_path: FilePath(text(&value, "transcript_path")?),
+                source: match text(&value, "source").ok().as_deref() {
+                    Some("resume") => Source::Resume(value.get("context_tokens").and_then(Value::as_i64).map(Tokens)),
+                    Some("compact") => Source::Compact,
+                    _ => Source::Startup,
+                },
+            }),
             "UserPromptSubmit" => Hook::UserPromptSubmit(session()?),
             "PermissionRequest" => Hook::PermissionRequest(session()?),
             "PostToolUse" => Hook::PostToolUse(session()?),
@@ -135,7 +139,7 @@ pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
     let watching = inotify::init(inotify::CreateFlags::CLOEXEC)?;
     let mut appearing: Option<(std::path::PathBuf, i32)> = None;
     let mut followed = false;
-    let mut offset = follow.offset.clone();
+    let mut read_from = follow.read_from.clone();
     let mut events = [0u8; 4096];
     loop {
         while !followed {
@@ -159,10 +163,14 @@ pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
             appearing = Some((nearest, watch));
         }
         if followed {
+            let offset = match &read_from {
+                ReadFrom::Offset(offset) => offset.clone(),
+                ReadFrom::FileEnd => Offset(std::fs::metadata(&path)?.len().try_into().unwrap_or(i64::MAX)),
+            };
             let rows = rows_after(&follow.file_path.0, &offset, &follow.row_count)?;
+            read_from = ReadFrom::Offset(rows.offset.clone());
             let full = rows.row_vector.len() as i64 >= follow.row_count.0;
             if !rows.row_vector.is_empty() {
-                offset = rows.offset.clone();
                 rows.write_to(&mut stream)?;
             }
             if full {
