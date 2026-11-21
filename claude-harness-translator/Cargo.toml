@@ -1,0 +1,19 @@
+[package]
+name = "claude-harness-translator"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+process = { path = "../process", features = ["datom"] }
+claude-harness-process = { path = "../claude-harness-process", features = ["datom"] }
+transport = { path = "../transport" }
+harness = { package = "harness-nexus-library", git = "https://github.com/LiGoldragon/harness-nexus-library", rev = "3613d63", features = ["datom"] }
+datom-codec = { workspace = true }
+protos = { workspace = true }
+rustix = { workspace = true }
+serde_json = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"

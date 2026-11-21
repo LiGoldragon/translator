@@ -1,0 +1,147 @@
+//! The Claude Harness Nexus's translator: the one place that holds Claude
+//! Code's words. It reads a hook's payload into a Hook, and follows a
+//! transcript for its Nexus, reading each new row.
+
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
+use std::os::unix::net::UnixStream;
+
+use claude_harness_process::*;
+use harness::{BackgroundWork, Description, EndReason, FilePath, Response, Session, Tokens, WorkId, WorkKind};
+use rustix::event::{PollFd, PollFlags};
+use rustix::fs::inotify;
+use serde_json::Value;
+use transport::Framed;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Untranslated {
+    Unreadable,
+    UnknownEvent(String),
+    MissingField(&'static str),
+}
+
+/// What reads the harness's own words into a type of the Nexus.
+pub trait Translatable: Sized {
+    fn translate(text: &str) -> Result<Self, Untranslated>;
+}
+
+fn text(value: &Value, field: &'static str) -> Result<String, Untranslated> {
+    value.get(field).and_then(Value::as_str).map(str::to_owned).ok_or(Untranslated::MissingField(field))
+}
+
+fn work(task: &Value) -> Result<BackgroundWork, Untranslated> {
+    let work_kind = match text(task, "type")?.as_str() {
+        "shell" => WorkKind::Shell,
+        "subagent" => WorkKind::Subagent,
+        "monitor" => WorkKind::Monitor,
+        "workflow" => WorkKind::Workflow,
+        other => return Err(Untranslated::UnknownEvent(format!("background task type {other}"))),
+    };
+    Ok(BackgroundWork { work_id: WorkId(text(task, "id")?), work_kind, description: Description(text(task, "description").unwrap_or_default()) })
+}
+
+impl Translatable for Hook {
+    fn translate(payload: &str) -> Result<Hook, Untranslated> {
+        let value: Value = serde_json::from_str(payload).map_err(|_| Untranslated::Unreadable)?;
+        let session = || text(&value, "session_id").map(Session);
+        Ok(match text(&value, "hook_event_name")?.as_str() {
+            "SessionStart" => Hook::SessionStart(SessionStart { session: session()?, file_path: FilePath(text(&value, "transcript_path")?) }),
+            "UserPromptSubmit" => Hook::UserPromptSubmit(session()?),
+            "PermissionRequest" => Hook::PermissionRequest(session()?),
+            "PostToolUse" => Hook::PostToolUse(session()?),
+            "Stop" => Hook::Stop(Stop {
+                session: session()?,
+                response_option: text(&value, "last_assistant_message").ok().map(Response),
+                background_work_vector: value
+                    .get("background_tasks")
+                    .and_then(Value::as_array)
+                    .map(|tasks| tasks.iter().map(work).collect::<Result<Vec<_>, _>>())
+                    .transpose()?
+                    .unwrap_or_default(),
+            }),
+            "SessionEnd" => Hook::SessionEnd(SessionEnd {
+                session: session()?,
+                end_reason: match text(&value, "reason")?.as_str() {
+                    "clear" => EndReason::Cleared,
+                    _ => EndReason::Exited,
+                },
+            }),
+            other => return Err(Untranslated::UnknownEvent(other.to_owned())),
+        })
+    }
+}
+
+impl Translatable for Row {
+    /// An assistant row of the main thread tells the context's size; every other row is Other.
+    fn translate(line: &str) -> Result<Row, Untranslated> {
+        let value: Value = serde_json::from_str(line).map_err(|_| Untranslated::Unreadable)?;
+        let main_thread = value.get("isSidechain").and_then(Value::as_bool) != Some(true);
+        let usage = value.get("message").and_then(|message| message.get("usage"));
+        Ok(match (value.get("type").and_then(Value::as_str), main_thread, usage) {
+            (Some("assistant"), true, Some(usage)) => {
+                let tokens = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]
+                    .iter()
+                    .filter_map(|field| usage.get(field).and_then(Value::as_i64))
+                    .sum();
+                Row::Assistant(Tokens(tokens))
+            }
+            _ => Row::Other,
+        })
+    }
+}
+
+/// Reads the whole lines after the offset, at most count of them.
+fn rows_after(path: &str, offset: &Offset, count: &Count) -> io::Result<Rows> {
+    let mut file = BufReader::new(File::open(path)?);
+    file.seek(SeekFrom::Start(offset.0.max(0) as u64))?;
+    let mut rows = Rows { row_vector: Vec::new(), offset: offset.clone() };
+    let mut line = Vec::new();
+    while (rows.row_vector.len() as i64) < count.0 {
+        line.clear();
+        let read = file.read_until(b'\n', &mut line)?;
+        if read == 0 || line.last() != Some(&b'\n') {
+            break;
+        }
+        rows.offset.0 += read as i64;
+        rows.row_vector.push(Row::translate(&String::from_utf8_lossy(&line)).unwrap_or(Row::Other));
+    }
+    Ok(rows)
+}
+
+/// A lasting emission: an outcome each time the transcript grows, until the
+/// Nexus closes the connection.
+pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
+    let path = follow.file_path.0.clone();
+    let watching = inotify::init(inotify::CreateFlags::CLOEXEC)?;
+    if inotify::add_watch(&watching, path.as_str(), inotify::WatchFlags::MODIFY).is_err() {
+        return Following::Missing.write_to(&mut stream);
+    }
+    let mut offset = follow.offset.clone();
+    let mut events = [0u8; 4096];
+    loop {
+        let rows = match rows_after(&path, &offset, &follow.count) {
+            Ok(rows) => rows,
+            Err(_) => return Following::Missing.write_to(&mut stream),
+        };
+        let full = rows.row_vector.len() as i64 >= follow.count.0;
+        if !rows.row_vector.is_empty() {
+            offset = rows.offset.clone();
+            Following::Rows(rows).write_to(&mut stream)?;
+        }
+        if full {
+            continue;
+        }
+        let mut waiting = [PollFd::new(&watching, PollFlags::IN), PollFd::new(&stream, PollFlags::IN)];
+        rustix::event::poll(&mut waiting, None)?;
+        if !waiting[1].revents().is_empty() {
+            return Ok(());
+        }
+        rustix::io::read(&watching, &mut events)?;
+    }
+}
+
+/// The hook's caller, from the connection's peer credentials.
+pub fn caller(stream: &UnixStream) -> io::Result<Caller> {
+    let credentials = rustix::net::sockopt::socket_peercred(stream)?;
+    Ok(Caller { process_id: ProcessId(credentials.pid.as_raw_nonzero().get().into()), user_id: UserId(credentials.uid.as_raw().into()) })
+}
