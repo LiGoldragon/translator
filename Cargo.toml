@@ -4,6 +4,6 @@ members = ["transport", "translator", "relay-signal", "relay-nexus", "relay-tran
 
 [workspace.dependencies]
 rkyv = { version = "0.8", default-features = false, features = ["alloc", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
-datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526" }
-protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598" }
+datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09a0526", features = ["rkyv"] }
+protos = { git = "https://github.com/LiGoldragon/protos", rev = "c93b598", features = ["rkyv"] }
 rustix = { version = "1", features = ["net", "fs", "event"] }
