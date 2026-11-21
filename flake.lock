@@ -44,17 +44,17 @@
         "protos": "protos"
       },
       "locked": {
-        "lastModified": 1795237078,
-        "narHash": "sha256-PpMH5u6Y0PYFaWTfuesfHUWB1u4QGOZRfn8UgJOx57o=",
+        "lastModified": 1795239212,
+        "narHash": "sha256-PIMV/pm61f8xCSaZJx9oPj5ZBTZLY1ruAX4ityi5X8M=",
         "owner": "LiGoldragon",
         "repo": "ethos-zero",
-        "rev": "48f155da487684cbebddf8e1fff6d6e8453abc9c",
+        "rev": "6e6799526d9b9860834dc51ff77fe7a02af09fb9",
         "type": "github"
       },
       "original": {
         "owner": "LiGoldragon",
         "repo": "ethos-zero",
-        "rev": "48f155da487684cbebddf8e1fff6d6e8453abc9c",
+        "rev": "6e6799526d9b9860834dc51ff77fe7a02af09fb9",
         "type": "github"
       }
     },
