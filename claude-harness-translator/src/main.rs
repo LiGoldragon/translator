@@ -91,7 +91,9 @@ where
 /// A Nexus that is down is told nothing: it bears them at its own start.
 fn listening(place: &Place) {
     let (Ok(caller), Ok(mut nexus)) = (itself(), UnixStream::connect(place.path(Placed::NexusSocket))) else { return };
-    let _ = (Call { caller, input: Input::Listening }).write_to(&mut nexus);
+    if (Call { caller, input: Input::Listening }).write_to(&mut nexus).is_ok() {
+        let _ = Output::read_from(&mut nexus);
+    }
 }
 
 fn serve_texts(texts: UnixListener, place: &Place, serve: fn(UnixStream, &Place)) {
