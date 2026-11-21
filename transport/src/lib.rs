@@ -37,6 +37,14 @@ pub enum Placed {
     MetaTextSocket,
     HookSocket,
     EmissionSocket,
+    /// signal-harness: the subscription every Harness Nexus serves.
+    SubscriptionSocket,
+    SubscriptionTextSocket,
+    /// signal-claude-prepare: the settings a session is started with.
+    PrepareSocket,
+    PrepareTextSocket,
+    /// The settings file the translator writes, beside the sockets.
+    Settings,
     /// The memory, named for the version of the types it holds.
     Memory(&'static str),
     /// The trace, named for the version of the Nexus that wrote it.
@@ -52,6 +60,11 @@ impl Placed {
             Placed::MetaTextSocket => "claude-harness-meta-translator.sock".into(),
             Placed::HookSocket => "claude-harness-hook.sock".into(),
             Placed::EmissionSocket => "claude-harness-emission.sock".into(),
+            Placed::SubscriptionSocket => "claude-harness-subscription.sock".into(),
+            Placed::SubscriptionTextSocket => "claude-harness-subscription-translator.sock".into(),
+            Placed::PrepareSocket => "claude-harness-prepare.sock".into(),
+            Placed::PrepareTextSocket => "claude-harness-prepare-translator.sock".into(),
+            Placed::Settings => "claude-harness-settings.json".into(),
             Placed::Memory(version) => format!("claude-harness-memory-{version}.signal"),
             Placed::Trace(version) => format!("claude-harness-trace-{version}.signal"),
         }
@@ -103,7 +116,17 @@ impl Place {
 
     pub fn path(&self, placed: Placed) -> PathBuf {
         let root = match placed {
-            Placed::NexusSocket | Placed::MetaSocket | Placed::TextSocket | Placed::MetaTextSocket | Placed::HookSocket | Placed::EmissionSocket => &self.runtime.0,
+            Placed::NexusSocket
+            | Placed::MetaSocket
+            | Placed::TextSocket
+            | Placed::MetaTextSocket
+            | Placed::HookSocket
+            | Placed::EmissionSocket
+            | Placed::SubscriptionSocket
+            | Placed::SubscriptionTextSocket
+            | Placed::PrepareSocket
+            | Placed::PrepareTextSocket
+            | Placed::Settings => &self.runtime.0,
             Placed::Memory(_) | Placed::Trace(_) => &self.state.0,
         };
         PathBuf::from(root).join(placed.file_name())

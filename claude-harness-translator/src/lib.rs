@@ -185,6 +185,21 @@ pub fn itself() -> io::Result<Caller> {
     Ok(Caller { process_id: ProcessId(std::process::id().into()), user_id: UserId(user_id.into()) })
 }
 
+/// Writes the settings a session is started with, beside the sockets: the hook
+/// client run at each named hook. The file is written whole, then moved into place.
+pub fn install(place: &Place, install: &Install) -> Installation {
+    let command = serde_json::json!([{ "hooks": [{ "type": "command", "command": install.hook_client.0 }] }]);
+    let hooks: serde_json::Map<String, Value> = install.hooks.0.iter().map(|hook_name| (hook_name.0.clone(), command.clone())).collect();
+    let settings = serde_json::json!({ "hooks": hooks });
+    let path = place.path(Placed::Settings);
+    let temporary = path.with_extension("next");
+    let written = std::fs::write(&temporary, settings.to_string()).and_then(|()| std::fs::rename(&temporary, &path));
+    match written {
+        Ok(()) => Installation::Installed(FilePath(path.to_string_lossy().into_owned())),
+        Err(error) => Installation::Uninstalled(error.raw_os_error().unwrap_or(1).into()),
+    }
+}
+
 /// The hook's caller, from the connection's peer credentials.
 pub fn caller(stream: &UnixStream) -> io::Result<Caller> {
     let credentials = rustix::net::sockopt::socket_peercred(stream)?;

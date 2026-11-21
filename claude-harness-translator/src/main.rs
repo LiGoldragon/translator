@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use std::thread;
 
 use claude_harness_process::*;
-use claude_harness_translator::{Translatable, caller, follow, itself};
+use claude_harness_translator::{Translatable, caller, follow, install, itself};
 use datom_codec::Datomizable;
 use protos::{Protosizable, Textualizable};
 use rustix::event::{PollFd, PollFlags};
@@ -115,26 +115,45 @@ fn main() -> ExitCode {
         }
     };
     let listened = place.prepare().and_then(|()| {
-        Ok((listen(&place, Placed::TextSocket)?, listen(&place, Placed::MetaTextSocket)?, listen(&place, Placed::HookSocket)?, listen(&place, Placed::EmissionSocket)?))
+        Ok((
+            listen(&place, Placed::TextSocket)?,
+            listen(&place, Placed::MetaTextSocket)?,
+            listen(&place, Placed::SubscriptionTextSocket)?,
+            listen(&place, Placed::PrepareTextSocket)?,
+            listen(&place, Placed::HookSocket)?,
+            listen(&place, Placed::EmissionSocket)?,
+        ))
     });
-    let (texts, meta_texts, hooks, emissions) = match listened {
+    let (texts, meta_texts, subscription_texts, prepare_texts, hooks, emissions) = match listened {
         Ok(listeners) => listeners,
         Err(error) => {
             eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     };
+    let emitting = place.clone();
     thread::spawn(move || {
         for mut stream in emissions.incoming().flatten() {
-            thread::spawn(move || {
-                if let Ok(Some(emission)) = Follow::read_from(&mut stream) {
+            let place = emitting.clone();
+            thread::spawn(move || match Emission::read_from(&mut stream) {
+                Ok(Some(Emission::Follow(emission))) => {
                     let _ = follow(stream, emission);
                 }
+                Ok(Some(Emission::Install(emission))) => {
+                    let _ = install(&place, &emission).write_to(&mut stream);
+                }
+                _ => {}
             });
         }
     });
     listening(&place);
     serve_texts(texts, &place, |text, place| serve_text::<Input, Call, Output>(text, place, Placed::NexusSocket, |caller, input| Call { caller, input }));
+    serve_texts(subscription_texts, &place, |text, place| {
+        serve_text::<signal_harness::Input, signal_harness::Input, signal_harness::Output>(text, place, Placed::SubscriptionSocket, |_, input| input)
+    });
+    serve_texts(prepare_texts, &place, |text, place| {
+        serve_text::<signal_claude_prepare::Input, signal_claude_prepare::Input, signal_claude_prepare::Output>(text, place, Placed::PrepareSocket, |_, input| input)
+    });
     serve_texts(meta_texts, &place, |text, place| {
         serve_text::<MetaInput, MetaCall, MetaOutput>(text, place, Placed::MetaSocket, |caller, meta_input| MetaCall { caller, meta_input })
     });
