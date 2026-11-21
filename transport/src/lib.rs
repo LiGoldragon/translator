@@ -32,23 +32,28 @@ pub struct CliConfiguration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Placed {
     NexusSocket,
+    MetaSocket,
     TextSocket,
+    MetaTextSocket,
     HookSocket,
     EmissionSocket,
-    Memory,
-    Trace,
+    /// The memory, named for the version of the types it holds.
+    Memory(&'static str),
+    /// The trace, named for the version of the Nexus that wrote it.
+    Trace(&'static str),
 }
 
 impl Placed {
     fn file_name(self) -> String {
-        let version = env!("CARGO_PKG_VERSION");
         match self {
             Placed::NexusSocket => "claude-harness.sock".into(),
+            Placed::MetaSocket => "claude-harness-meta.sock".into(),
             Placed::TextSocket => "claude-harness-translator.sock".into(),
+            Placed::MetaTextSocket => "claude-harness-meta-translator.sock".into(),
             Placed::HookSocket => "claude-harness-hook.sock".into(),
             Placed::EmissionSocket => "claude-harness-emission.sock".into(),
-            Placed::Memory => format!("claude-harness-memory-{version}.signal"),
-            Placed::Trace => format!("claude-harness-trace-{version}.signal"),
+            Placed::Memory(version) => format!("claude-harness-memory-{version}.signal"),
+            Placed::Trace(version) => format!("claude-harness-trace-{version}.signal"),
         }
     }
 }
@@ -98,8 +103,8 @@ impl Place {
 
     pub fn path(&self, placed: Placed) -> PathBuf {
         let root = match placed {
-            Placed::NexusSocket | Placed::TextSocket | Placed::HookSocket | Placed::EmissionSocket => &self.runtime.0,
-            Placed::Memory | Placed::Trace => &self.state.0,
+            Placed::NexusSocket | Placed::MetaSocket | Placed::TextSocket | Placed::MetaTextSocket | Placed::HookSocket | Placed::EmissionSocket => &self.runtime.0,
+            Placed::Memory(_) | Placed::Trace(_) => &self.state.0,
         };
         PathBuf::from(root).join(placed.file_name())
     }

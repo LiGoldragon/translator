@@ -4,14 +4,17 @@
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
+use std::io::Write;
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
+use std::process::ExitCode;
 
 use claude_harness_process::*;
 use harness::{BackgroundWork, Description, EndReason, FilePath, Response, Session, Tokens, WorkId, WorkKind};
 use rustix::event::{PollFd, PollFlags};
 use rustix::fs::inotify;
 use serde_json::Value;
-use transport::Framed;
+use transport::{Framed, Place, Placed};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Untranslated {
@@ -163,4 +166,36 @@ pub fn follow(mut stream: UnixStream, follow: Follow) -> io::Result<()> {
 pub fn caller(stream: &UnixStream) -> io::Result<Caller> {
     let credentials = rustix::net::sockopt::socket_peercred(stream)?;
     Ok(Caller { process_id: ProcessId(credentials.pid.as_raw_nonzero().get().into()), user_id: UserId(credentials.uid.as_raw().into()) })
+}
+
+/// The CLI, written once for the ordinary and the meta socket: one datom
+/// written to the translator; each reply printed as it arrives, one datom a
+/// line, until the translator ends the exchange.
+pub fn call(text_socket: Placed) -> ExitCode {
+    let mut arguments = std::env::args().skip(1);
+    let (Some(datom), None) = (arguments.next(), arguments.next()) else {
+        eprintln!("Usage");
+        return ExitCode::from(2);
+    };
+    let place = match Place::from_configuration() {
+        Ok(place) => place,
+        Err(unplaced) => {
+            eprintln!("{unplaced:?}");
+            return ExitCode::from(2);
+        }
+    };
+    let Ok(mut stream) = UnixStream::connect(place.path(text_socket)) else {
+        eprintln!("TranslatorDown");
+        return ExitCode::FAILURE;
+    };
+    if stream.write_all(datom.as_bytes()).is_err() || stream.shutdown(Shutdown::Write).is_err() {
+        return ExitCode::FAILURE;
+    }
+    let mut out = std::io::stdout();
+    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+        if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
+            break;
+        }
+    }
+    ExitCode::SUCCESS
 }

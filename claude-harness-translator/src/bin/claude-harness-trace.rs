@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::process::ExitCode;
 
-use claude_harness_process::Process;
+use claude_harness_process::{Process, VERSION};
 use datom_codec::Datomizable;
 use process::Traced;
 use protos::{Protosizable, Textualizable};
@@ -19,7 +19,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let mut archive = match File::open(place.path(Placed::Trace)) {
+    let mut archive = match File::open(place.path(Placed::Trace(VERSION))) {
         Ok(file) => BufReader::new(file),
         Err(error) => {
             eprintln!("{error}");

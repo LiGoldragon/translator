@@ -43,14 +43,20 @@ fn report(mut hook_stream: UnixStream, place: &Place) {
     }
 }
 
-/// One datom in, each output out as a datom line, until the Nexus or the caller closes.
-fn serve_text(mut text: UnixStream, place: &Place) {
+/// One datom in, each output out as a datom line, until the Nexus or the caller
+/// closes: the ordinary text socket and the meta one, each to its own Nexus socket.
+fn serve_text<I, C, O>(mut text: UnixStream, place: &Place, nexus_socket: Placed, called: fn(Caller, I) -> C)
+where
+    I: datom_codec::Composing,
+    C: Framed,
+    O: Framed + Datomizable,
+{
     let Ok(caller) = caller(&text) else { return };
     let mut datom = String::new();
     if text.read_to_string(&mut datom).is_err() {
         return;
     }
-    let input: Input = match transport::actualize(&datom) {
+    let input: I = match transport::actualize(&datom) {
         Ok(input) => input,
         Err(unplaced) => {
             let _ = writeln!(text, "Unreadable");
@@ -58,11 +64,11 @@ fn serve_text(mut text: UnixStream, place: &Place) {
             return;
         }
     };
-    let Ok(mut nexus) = UnixStream::connect(place.path(Placed::NexusSocket)) else {
+    let Ok(mut nexus) = UnixStream::connect(place.path(nexus_socket)) else {
         let _ = writeln!(text, "NexusDown");
         return;
     };
-    if (Call { caller, input }).write_to(&mut nexus).is_err() {
+    if called(caller, input).write_to(&mut nexus).is_err() {
         return;
     }
     if let (Ok(hanging), Ok(closing)) = (text.try_clone(), nexus.try_clone()) {
@@ -72,11 +78,21 @@ fn serve_text(mut text: UnixStream, place: &Place) {
             let _ = closing.shutdown(std::net::Shutdown::Both);
         });
     }
-    while let Ok(Some(output)) = Output::read_from(&mut nexus) {
+    while let Ok(Some(output)) = O::read_from(&mut nexus) {
         if writeln!(text, "{}", output.datomize(vec![]).protosize().textualize()).is_err() {
             return;
         }
     }
+}
+
+fn serve_texts(texts: UnixListener, place: &Place, serve: fn(UnixStream, &Place)) {
+    let place = place.clone();
+    thread::spawn(move || {
+        for stream in texts.incoming().flatten() {
+            let place = place.clone();
+            thread::spawn(move || serve(stream, &place));
+        }
+    });
 }
 
 fn main() -> ExitCode {
@@ -87,8 +103,10 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let listened = place.prepare().and_then(|()| Ok((listen(&place, Placed::TextSocket)?, listen(&place, Placed::HookSocket)?, listen(&place, Placed::EmissionSocket)?)));
-    let (texts, hooks, emissions) = match listened {
+    let listened = place.prepare().and_then(|()| {
+        Ok((listen(&place, Placed::TextSocket)?, listen(&place, Placed::MetaTextSocket)?, listen(&place, Placed::HookSocket)?, listen(&place, Placed::EmissionSocket)?))
+    });
+    let (texts, meta_texts, hooks, emissions) = match listened {
         Ok(listeners) => listeners,
         Err(error) => {
             eprintln!("{error}");
@@ -104,12 +122,9 @@ fn main() -> ExitCode {
             });
         }
     });
-    let serving = place.clone();
-    thread::spawn(move || {
-        for stream in texts.incoming().flatten() {
-            let place = serving.clone();
-            thread::spawn(move || serve_text(stream, &place));
-        }
+    serve_texts(texts, &place, |text, place| serve_text::<Input, Call, Output>(text, place, Placed::NexusSocket, |caller, input| Call { caller, input }));
+    serve_texts(meta_texts, &place, |text, place| {
+        serve_text::<MetaInput, MetaCall, MetaOutput>(text, place, Placed::MetaSocket, |caller, meta_input| MetaCall { caller, meta_input })
     });
     for stream in hooks.incoming().flatten() {
         report(stream, &place);
