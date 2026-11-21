@@ -1,14 +1,16 @@
 [package]
-name = "transport"
-version = "0.1.0"
+name = "translator-transport"
+version = "1.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
+description = "What a Nexus, its translator and its clients share: the place, the sockets and files named under it, the caller, the framing of Signal on a stream, and the emission socket as the Nexus holds it."
 
 [dependencies]
 rkyv = { workspace = true }
 datom-codec = { workspace = true }
 protos = { workspace = true }
+rustix = { workspace = true }
 
 [lints.rust]
 unsafe_code = "forbid"

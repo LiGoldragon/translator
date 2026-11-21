@@ -1,0 +1,22 @@
+Library
+[]
+[ PlaceName.String
+  Runtime.String
+  State.String
+  Place.{ PlaceName Runtime State }
+  CliConfiguration.{ PlaceName }
+  ProcessId.Integer
+  UserId.Integer
+  Caller.{ ProcessId UserId }
+  Unobserved.[ Unsubmitted Unanswered ]
+  Path.String
+  Reason.String
+  Unsent.[ Usage
+           Missing.Path
+           Unreadable.{ Path Reason }
+           Invalid.{ Path Reason } ] ]
+[ Named.{ []
+          []
+          [ NAME.String ]
+          [] } ]
+[]
