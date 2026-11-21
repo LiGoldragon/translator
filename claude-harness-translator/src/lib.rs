@@ -32,6 +32,7 @@ fn text(value: &Value, field: &'static str) -> Result<String, Untranslated> {
     value.get(field).and_then(Value::as_str).map(str::to_owned).ok_or(Untranslated::MissingField(field))
 }
 
+/// A task of a kind not known is left out, and the rest of its Stop is read.
 fn work(task: &Value) -> Result<BackgroundWork, Untranslated> {
     let work_kind = match text(task, "type")?.as_str() {
         "shell" => WorkKind::Shell,
@@ -48,7 +49,11 @@ impl Translatable for Hook {
         let value: Value = serde_json::from_str(payload).map_err(|_| Untranslated::Unreadable)?;
         let session = || text(&value, "session_id").map(Session);
         Ok(match text(&value, "hook_event_name")?.as_str() {
-            "SessionStart" => Hook::SessionStart(SessionStart { session: session()?, file_path: FilePath(text(&value, "transcript_path")?) }),
+            // A start on resume or on compact is not yet read: its mapping waits on a ruling.
+            "SessionStart" => match text(&value, "source").ok().as_deref() {
+                Some(source @ ("resume" | "compact")) => return Err(Untranslated::UnknownEvent(format!("SessionStart from {source}"))),
+                _ => Hook::SessionStart(SessionStart { session: session()?, file_path: FilePath(text(&value, "transcript_path")?) }),
+            },
             "UserPromptSubmit" => Hook::UserPromptSubmit(session()?),
             "PermissionRequest" => Hook::PermissionRequest(session()?),
             "PostToolUse" => Hook::PostToolUse(session()?),
@@ -58,8 +63,12 @@ impl Translatable for Hook {
                 background_work_vector: value
                     .get("background_tasks")
                     .and_then(Value::as_array)
-                    .map(|tasks| tasks.iter().map(work).collect::<Result<Vec<_>, _>>())
-                    .transpose()?
+                    .map(|tasks| {
+                        tasks
+                            .iter()
+                            .filter_map(|task| work(task).inspect_err(|untranslated| eprintln!("{untranslated:?}")).ok())
+                            .collect()
+                    })
                     .unwrap_or_default(),
             }),
             "SessionEnd" => Hook::SessionEnd(SessionEnd {
@@ -75,12 +84,18 @@ impl Translatable for Hook {
 }
 
 impl Translatable for Row {
-    /// An assistant row of the main thread tells the context's size; every other row is Other.
+    /// Of the main thread: an assistant row tells the context's size, the user
+    /// row that carries turnPosition starts a turn, and the stop_hook_summary
+    /// row that did not keep the turn going ends it. Every other row is Other.
     fn translate(line: &str) -> Result<Row, Untranslated> {
         let value: Value = serde_json::from_str(line).map_err(|_| Untranslated::Unreadable)?;
         let main_thread = value.get("isSidechain").and_then(Value::as_bool) != Some(true);
         let usage = value.get("message").and_then(|message| message.get("usage"));
+        let summary = value.get("subtype").and_then(Value::as_str) == Some("stop_hook_summary")
+            && value.get("preventedContinuation").and_then(Value::as_bool) == Some(false);
         Ok(match (value.get("type").and_then(Value::as_str), main_thread, usage) {
+            (Some("user"), true, _) if value.get("turnPosition").is_some_and(|position| !position.is_null()) => Row::TurnStarted,
+            (Some("system"), true, _) if summary => Row::TurnEnded,
             (Some("assistant"), true, Some(usage)) => {
                 let tokens = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]
                     .iter()
