@@ -32,6 +32,7 @@ pub struct CliConfiguration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Placed {
     NexusSocket,
+    TextSocket,
     HookSocket,
     EmissionSocket,
     Memory,
@@ -43,6 +44,7 @@ impl Placed {
         let version = env!("CARGO_PKG_VERSION");
         match self {
             Placed::NexusSocket => "claude-harness.sock".into(),
+            Placed::TextSocket => "claude-harness-translator.sock".into(),
             Placed::HookSocket => "claude-harness-hook.sock".into(),
             Placed::EmissionSocket => "claude-harness-emission.sock".into(),
             Placed::Memory => format!("claude-harness-memory-{version}.signal"),
@@ -62,7 +64,8 @@ fn budget() -> Budget {
     Budget { remaining: 4_096, reader: ReaderBudget::try_from(4_096).expect("a reader budget"), depth: 0, maximum_depth: 64 }
 }
 
-fn actualize<T: Composing>(text: &str) -> Result<T, Unplaced> {
+/// Reads a datom typed at a client into its type.
+pub fn actualize<T: Composing>(text: &str) -> Result<T, Unplaced> {
     Potential::<T>::from(text).actualize(&mut budget()).map_err(|error| Unplaced::Invalid(format!("{error:?}")))
 }
 
@@ -95,7 +98,7 @@ impl Place {
 
     pub fn path(&self, placed: Placed) -> PathBuf {
         let root = match placed {
-            Placed::NexusSocket | Placed::HookSocket | Placed::EmissionSocket => &self.runtime.0,
+            Placed::NexusSocket | Placed::TextSocket | Placed::HookSocket | Placed::EmissionSocket => &self.runtime.0,
             Placed::Memory | Placed::Trace => &self.state.0,
         };
         PathBuf::from(root).join(placed.file_name())
